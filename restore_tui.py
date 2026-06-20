@@ -114,20 +114,29 @@ def run_select_screen(stdscr, all_pkgs, selected_set, title):
         
         stdscr.refresh()
         
+        # Input reading
         ch = stdscr.getch()
+        
+        # ESC key handling (27)
         if ch == 27:
             stdscr.nodelay(True)
             next_ch = stdscr.getch()
             stdscr.nodelay(False)
-            if next_ch == -1:
-                return False  # Exit and discard
+            if next_ch == -1:  # Only Esc was pressed
+                return False
+                
+        # Backspace handling
         elif ch in (8, 127, 263, curses.KEY_BACKSPACE):
             if len(query) > 0:
                 query = query[:-1]
                 list_index = 0
                 scroll_offset = 0
+                
+        # Enter (Accept)
         elif ch in (10, 13, curses.KEY_ENTER):
-            return True  # Exit and save
+            return True
+            
+        # Space (Toggle selection)
         elif ch == ord(' '):
             if filtered_pkgs:
                 pkg = filtered_pkgs[list_index]
@@ -135,25 +144,35 @@ def run_select_screen(stdscr, all_pkgs, selected_set, title):
                     selected_set.remove(pkg)
                 else:
                     selected_set.add(pkg)
-        elif ch == 1:  # Ctrl+A
+                    
+        # Ctrl+A (Select all visible)
+        elif ch == 1:
             for p in filtered_pkgs:
                 selected_set.add(p)
-        elif ch == 24:  # Ctrl+X
+                
+        # Ctrl+X (Deselect all visible)
+        elif ch == 24:
             for p in filtered_pkgs:
                 if p in selected_set:
                     selected_set.remove(p)
+                    
+        # Up Arrow
         elif ch == curses.KEY_UP:
             if list_index > 0:
                 list_index -= 1
+                
+        # Down Arrow
         elif ch == curses.KEY_DOWN:
             if list_index < len(filtered_pkgs) - 1:
                 list_index += 1
+                
+        # Ordinary keyboard characters (filtering query)
         elif 32 <= ch <= 126:
             query += chr(ch)
             list_index = 0
             scroll_offset = 0
 
-def run_global_search(stdscr, pacman_pkgs, selected_pacman, aur_pkgs, selected_aur):
+def run_global_search(stdscr, pacman_pkgs, selected_pacman, aur_pkgs, selected_aur, is_debian=False):
     query = ""
     list_index = 0
     scroll_offset = 0
@@ -187,7 +206,8 @@ def run_global_search(stdscr, pacman_pkgs, selected_pacman, aur_pkgs, selected_a
         stdscr.attroff(curses.color_pair(2) | curses.A_BOLD)
         
         # Title (no emojis/stickers)
-        stdscr.addstr(1, 2, " BUSCADOR GLOBAL (Pacman + AUR) ", curses.color_pair(2) | curses.A_BOLD | curses.A_REVERSE)
+        title = " BUSCADOR GLOBAL (APT + Snaps) " if is_debian else " BUSCADOR GLOBAL (Pacman + AUR) "
+        stdscr.addstr(1, 2, title, curses.color_pair(2) | curses.A_BOLD | curses.A_REVERSE)
         
         # Search Box
         stdscr.addstr(3, 2, "Buscar: ", curses.A_BOLD)
@@ -210,7 +230,11 @@ def run_global_search(stdscr, pacman_pkgs, selected_pacman, aur_pkgs, selected_a
             is_selected = pkg in (selected_pacman if repo == "pacman" else selected_aur)
             is_highlighted = idx == list_index
             
-            repo_label = "[Pacman]" if repo == "pacman" else "[AUR]"
+            if is_debian:
+                repo_label = "[APT]" if repo == "pacman" else "[Snap]"
+            else:
+                repo_label = "[Pacman]" if repo == "pacman" else "[AUR]"
+                
             y_pos = 5 + i
             if is_highlighted:
                 checkbox = "[X]" if is_selected else "[ ]"
@@ -297,7 +321,7 @@ def run_global_search(stdscr, pacman_pkgs, selected_pacman, aur_pkgs, selected_a
             list_index = 0
             scroll_offset = 0
 
-def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfiles_state_file):
+def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfiles_state_file, dconf_state_file):
     curses.start_color()
     curses.use_default_colors()
     curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_CYAN)
@@ -306,10 +330,22 @@ def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfile
     curses.init_pair(4, curses.COLOR_RED, -1)
     curses.curs_set(0)
     
-    pacman_all = load_pkgs(os.path.join(respaldo_dir, "pacman_packages.txt"))
-    aur_all = load_pkgs(os.path.join(respaldo_dir, "aur_packages.txt"))
+    # Detect backup OS family by checking file existence
+    has_apt = os.path.exists(os.path.join(respaldo_dir, "apt_packages.txt"))
+    has_pacman = os.path.exists(os.path.join(respaldo_dir, "pacman_packages.txt"))
+    is_debian = has_apt and not has_pacman
+    
+    # Load respective packages
+    if is_debian:
+        pacman_all = load_pkgs(os.path.join(respaldo_dir, "apt_packages.txt"))
+        aur_all = load_pkgs(os.path.join(respaldo_dir, "snap_packages.txt"))
+    else:
+        pacman_all = load_pkgs(os.path.join(respaldo_dir, "pacman_packages.txt"))
+        aur_all = load_pkgs(os.path.join(respaldo_dir, "aur_packages.txt"))
+        
     flatpak_all = load_pkgs(os.path.join(respaldo_dir, "flatpak_packages.txt"))
     has_dotfiles = os.path.exists(os.path.join(respaldo_dir, "dotfiles_config.tar.gz"))
+    has_dconf = os.path.exists(os.path.join(respaldo_dir, "dconf_settings.ini"))
     
     selected_pacman = set(load_pkgs(temp_pacman)) if os.path.exists(temp_pacman) and os.path.getsize(temp_pacman) > 0 else set(pacman_all)
     selected_aur = set(load_pkgs(temp_aur)) if os.path.exists(temp_aur) and os.path.getsize(temp_aur) > 0 else set(aur_all)
@@ -320,13 +356,23 @@ def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfile
         with open(dotfiles_state_file, "r") as f:
             restore_dotfiles = f.read().strip()
             
+    restore_dconf = "SI"
+    if os.path.exists(dconf_state_file):
+        with open(dconf_state_file, "r") as f:
+            restore_dconf = f.read().strip()
+            
     menu_index = 0
     
     while True:
-        menu_items = [
-            ("pacman", f"Paquetes Oficiales Pacman    ({len(selected_pacman & set(pacman_all))}/{len(pacman_all)})"),
-            ("aur",    f"Paquetes de AUR (Foreign)    ({len(selected_aur & set(aur_all))}/{len(aur_all)})")
-        ]
+        menu_items = []
+        if is_debian:
+            menu_items.append(("pacman", f"Paquetes Oficiales APT       ({len(selected_pacman & set(pacman_all))}/{len(pacman_all)})"))
+            if aur_all:
+                menu_items.append(("aur",    f"Paquetes Snap                ({len(selected_aur & set(aur_all))}/{len(aur_all)})"))
+        else:
+            menu_items.append(("pacman", f"Paquetes Oficiales Pacman    ({len(selected_pacman & set(pacman_all))}/{len(pacman_all)})"))
+            if aur_all or os.path.exists(os.path.join(respaldo_dir, "aur_packages.txt")):
+                menu_items.append(("aur",    f"Paquetes de AUR (Foreign)    ({len(selected_aur & set(aur_all))}/{len(aur_all)})"))
         
         if flatpak_all:
             menu_items.append(("flatpak", f"Aplicaciones Flatpak         ({len(selected_flatpak & set(flatpak_all))}/{len(flatpak_all)})"))
@@ -334,7 +380,10 @@ def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfile
         if has_dotfiles:
             menu_items.append(("dotfiles", f"Restaurar Configs ~/.config  ({restore_dotfiles})"))
             
-        menu_items.append(("search", "Buscar en todos los paquetes (Pacman/AUR)"))
+        if has_dconf:
+            menu_items.append(("dconf", f"Restaurar Conf. Escritorio   ({restore_dconf})"))
+            
+        menu_items.append(("search", "Buscar en todos los paquetes (APT/Snaps)" if is_debian else "Buscar en todos los paquetes (Pacman/AUR)"))
         menu_items.append(("install", "INICIAR INSTALACION Y RESTAURACION"))
         menu_items.append(("exit", "Salir sin instalar"))
         
@@ -398,11 +447,13 @@ def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfile
             
             if key == "pacman":
                 temp_set = set(selected_pacman)
-                if run_select_screen(stdscr, pacman_all, temp_set, "Seleccionar Paquetes Pacman"):
+                title = "Seleccionar Paquetes APT" if is_debian else "Seleccionar Paquetes Pacman"
+                if run_select_screen(stdscr, pacman_all, temp_set, title):
                     selected_pacman = temp_set
             elif key == "aur":
                 temp_set = set(selected_aur)
-                if run_select_screen(stdscr, aur_all, temp_set, "Seleccionar Paquetes AUR"):
+                title = "Seleccionar Aplicaciones Snap" if is_debian else "Seleccionar Paquetes AUR"
+                if run_select_screen(stdscr, aur_all, temp_set, title):
                     selected_aur = temp_set
             elif key == "flatpak":
                 temp_set = set(selected_flatpak)
@@ -410,8 +461,10 @@ def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfile
                     selected_flatpak = temp_set
             elif key == "dotfiles":
                 restore_dotfiles = "NO" if restore_dotfiles == "SI" else "SI"
+            elif key == "dconf":
+                restore_dconf = "NO" if restore_dconf == "SI" else "SI"
             elif key == "search":
-                run_global_search(stdscr, pacman_all, selected_pacman, aur_all, selected_aur)
+                run_global_search(stdscr, pacman_all, selected_pacman, aur_all, selected_aur, is_debian)
             elif key == "install":
                 save_pkgs(temp_pacman, pacman_all, selected_pacman)
                 save_pkgs(temp_aur, aur_all, selected_aur)
@@ -419,13 +472,16 @@ def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfile
                     save_pkgs(temp_flatpak, flatpak_all, selected_flatpak)
                 with open(dotfiles_state_file, "w") as f:
                     f.write(restore_dotfiles + "\n")
+                if has_dconf:
+                    with open(dconf_state_file, "w") as f:
+                        f.write(restore_dconf + "\n")
                 return 0
             elif key == "exit":
                 return 1
 
 if __name__ == "__main__":
     if len(sys.argv) < 6:
-        print("Usage: restore_tui.py <respaldo_dir> <temp_pacman> <temp_aur> <temp_flatpak> <dotfiles_state_file>")
+        print("Usage: restore_tui.py <respaldo_dir> <temp_pacman> <temp_aur> <temp_flatpak> <dotfiles_state_file> [dconf_state_file]")
         sys.exit(1)
         
     respaldo_dir = sys.argv[1]
@@ -433,9 +489,10 @@ if __name__ == "__main__":
     temp_aur = sys.argv[3]
     temp_flatpak = sys.argv[4]
     dotfiles_state_file = sys.argv[5]
+    dconf_state_file = sys.argv[6] if len(sys.argv) > 6 else "/tmp/cachy_restore_dconf_state"
     
     try:
-        ret = curses.wrapper(main_menu, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfiles_state_file)
+        ret = curses.wrapper(main_menu, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfiles_state_file, dconf_state_file)
         sys.exit(ret)
     except KeyboardInterrupt:
         sys.exit(1)

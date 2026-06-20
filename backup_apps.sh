@@ -60,24 +60,57 @@ if [ "$BASE_DIR" != "$SCRIPT_DIR" ]; then
     fi
 fi
 
+# Detectar gestor de paquetes de la familia del sistema operativo
+if command -v pacman &> /dev/null; then
+    OS_FAMILY="arch"
+elif command -v apt-get &> /dev/null; then
+    OS_FAMILY="debian"
+else
+    echo "Error: No se pudo detectar un gestor de paquetes compatible (pacman o apt)."
+    exit 1
+fi
+
+echo "S.O. Detectado: Familia $OS_FAMILY"
 echo "=== Iniciando Respaldo de Aplicaciones y Configuración ==="
 
-# Patrón de exclusión para omitir paquetes base del sistema y específicos de CachyOS
-# Esto permite que la lista de software sea portátil a cualquier otra distribución basada en Arch Linux
-EXCLUDE_PATTERN="^cachyos|^linux-cachyos|^linux$|^linux-headers|^linux-lts|^linux-zen|^grub|^efibootmgr|^intel-ucode|^amd-ucode|^linux-firmware|^mkinitcpio|^systemd|^pacman|^sudo|^networkmanager|^base|^base-devel"
+if [ "$OS_FAMILY" = "arch" ]; then
+    # Patrón de exclusión para omitir paquetes base del sistema y específicos de CachyOS
+    EXCLUDE_PATTERN="^cachyos|^linux-cachyos|^linux$|^linux-headers|^linux-lts|^linux-zen|^grub|^efibootmgr|^intel-ucode|^amd-ucode|^linux-firmware|^mkinitcpio|^systemd|^pacman|^sudo|^networkmanager|^base|^base-devel"
 
-# 1. Guardar paquetes oficiales de pacman (filtrando base y específicos de CachyOS)
-echo "[1/4] Guardando lista de paquetes oficiales (pacman)..."
-# Filtramos los grupos esenciales de Arch (base y base-devel)
-comm -23 <(pacman -Qqen | sort) <(pacman -Qgq base base-devel 2>/dev/null | sort -u) > "$RESPALDO_DIR/temp_pacman.txt"
+    # 1. Guardar paquetes oficiales de pacman (filtrando base y específicos de CachyOS)
+    echo "[1/4] Guardando lista de paquetes oficiales (pacman)..."
+    comm -23 <(pacman -Qqen | sort) <(pacman -Qgq base base-devel 2>/dev/null | sort -u) > "$RESPALDO_DIR/temp_pacman.txt"
+    grep -Ev "($EXCLUDE_PATTERN)" "$RESPALDO_DIR/temp_pacman.txt" > "$RESPALDO_DIR/pacman_packages.txt"
+    rm -f "$RESPALDO_DIR/temp_pacman.txt"
 
-# Aplicamos el filtro de exclusión de sistema
-grep -Ev "($EXCLUDE_PATTERN)" "$RESPALDO_DIR/temp_pacman.txt" > "$RESPALDO_DIR/pacman_packages.txt"
-rm -f "$RESPALDO_DIR/temp_pacman.txt"
+    # 2. Guardar paquetes de AUR (yay/paru) (filtrando también los del sistema si los hay)
+    echo "[2/4] Guardando lista de paquetes de AUR (Foreign)..."
+    pacman -Qqem | grep -Ev "($EXCLUDE_PATTERN)" > "$RESPALDO_DIR/aur_packages.txt"
 
-# 2. Guardar paquetes de AUR (yay/paru) (filtrando también los del sistema si los hay)
-echo "[2/4] Guardando lista de paquetes de AUR (Foreign)..."
-pacman -Qqem | grep -Ev "($EXCLUDE_PATTERN)" > "$RESPALDO_DIR/aur_packages.txt"
+else
+    # Familia Debian / Ubuntu
+    # 1. Guardar lista de paquetes instalados manualmente con APT
+    echo "[1/4] Guardando lista de paquetes oficiales (APT)..."
+    apt-mark showmanual | sort > "$RESPALDO_DIR/apt_packages.txt"
+
+    # 2. Guardar repositorios PPA y fuentes externas
+    echo "[2/4] Respaldando fuentes de repositorios PPA (/etc/apt/sources.list.d/)..."
+    if [ -d "/etc/apt/sources.list.d" ]; then
+        tar -czf "$RESPALDO_DIR/apt_sources.tar.gz" -C /etc/apt sources.list.d/ trusted.gpg.d/ 2>/dev/null || true
+    fi
+
+    # Respaldar Snaps si existe snapd
+    if command -v snap &> /dev/null; then
+        echo "-> Guardando lista de aplicaciones Snap..."
+        snap list | awk 'NR>1 {print $1}' > "$RESPALDO_DIR/snap_packages.txt" 2>/dev/null || true
+    fi
+
+    # Respaldar base de datos de configuraciones del entorno gráfico (dconf)
+    if command -v dconf &> /dev/null; then
+        echo "-> Respaldando base de datos dconf (configuración de escritorio)..."
+        dconf dump / > "$RESPALDO_DIR/dconf_settings.ini" 2>/dev/null || true
+    fi
+fi
 
 # 3. Guardar paquetes Flatpak (si existen)
 if command -v flatpak &> /dev/null; then
@@ -112,15 +145,27 @@ echo "=========================================================="
 echo "¡Respaldo completado con éxito!"
 echo "Los archivos se guardaron en: $RESPALDO_DIR"
 echo "----------------------------------------------------------"
-echo "Resumen de lo respaldado:"
+echo "Resumen de lo respaldado (Familia: $OS_FAMILY):"
 if [ -f "$RESPALDO_DIR/pacman_packages.txt" ]; then
     echo "  - Paquetes Oficiales (Pacman): $(wc -l < "$RESPALDO_DIR/pacman_packages.txt") paquetes"
 fi
 if [ -f "$RESPALDO_DIR/aur_packages.txt" ]; then
     echo "  - Paquetes AUR (Foreign):      $(wc -l < "$RESPALDO_DIR/aur_packages.txt") paquetes"
 fi
+if [ -f "$RESPALDO_DIR/apt_packages.txt" ]; then
+    echo "  - Paquetes Oficiales (APT):    $(wc -l < "$RESPALDO_DIR/apt_packages.txt") paquetes"
+fi
+if [ -f "$RESPALDO_DIR/snap_packages.txt" ]; then
+    echo "  - Aplicaciones Snap:           $(wc -l < "$RESPALDO_DIR/snap_packages.txt") snaps"
+fi
 if [ -f "$RESPALDO_DIR/flatpak_packages.txt" ]; then
     echo "  - Aplicaciones Flatpak:        $(wc -l < "$RESPALDO_DIR/flatpak_packages.txt") flatpaks"
+fi
+if [ -f "$RESPALDO_DIR/apt_sources.tar.gz" ]; then
+    echo "  - Repositorios y Llaves APT:   Sí (comprimido)"
+fi
+if [ -f "$RESPALDO_DIR/dconf_settings.ini" ]; then
+    echo "  - Conf. Escritorio (dconf):    Sí"
 fi
 if [ -f "$RESPALDO_DIR/dotfiles_config.tar.gz" ]; then
     echo "  - Configuraciones (~/.config):  $(du -sh "$RESPALDO_DIR/dotfiles_config.tar.gz" | cut -f1)"
