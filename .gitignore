@@ -1,0 +1,20 @@
+# Ignorar directorios de respaldo personal (¡contienen dotfiles y credenciales privadas!)
+respaldo_cachyos/
+respaldo_cachyos_*/
+
+# Ignorar archivos de registro (Logs)
+*.log
+restore_error.log
+
+# Python (Cachés de compilación)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDEs y Editores de texto
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
