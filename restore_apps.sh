@@ -1,19 +1,25 @@
 #!/bin/bash
 
-# Directorio de respaldos
-RESPALDO_DIR="$(dirname "$(readlink -f "$0")")/respaldo_cachyos"
+# Directorio de respaldos (por defecto respaldo_sistema, fallback a respaldo_cachyos)
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 
-if [ ! -d "$RESPALDO_DIR" ]; then
-    # Alternativa si no está al lado del script
+if [ -d "$SCRIPT_DIR/respaldo_sistema" ]; then
+    RESPALDO_DIR="$SCRIPT_DIR/respaldo_sistema"
+elif [ -d "$SCRIPT_DIR/respaldo_cachyos" ]; then
+    RESPALDO_DIR="$SCRIPT_DIR/respaldo_cachyos"
+elif [ -d "$HOME/Backup/respaldo_sistema" ]; then
+    RESPALDO_DIR="$HOME/Backup/respaldo_sistema"
+elif [ -d "$HOME/Backup/respaldo_cachyos" ]; then
     RESPALDO_DIR="$HOME/Backup/respaldo_cachyos"
-fi
-
-if [ ! -d "$RESPALDO_DIR" ]; then
-    echo "No se encontró la carpeta 'respaldo_cachyos' al lado de este script ni en ~/Backup."
-    read -p "Por favor, ingrese la ruta del directorio que contiene 'respaldo_cachyos' (o la ruta completa al mismo): " CUSTOM_PATH
+else
+    # Si no se encuentra en las ubicaciones estándar, preguntar al usuario
+    echo "No se encontró la carpeta de respaldo ('respaldo_sistema' o 'respaldo_cachyos') al lado de este script ni en ~/Backup."
+    read -p "Por favor, ingrese la ruta del directorio de respaldo (o la carpeta contenedora): " CUSTOM_PATH
     CUSTOM_PATH="${CUSTOM_PATH/#\~/$HOME}"
-    if [[ "$CUSTOM_PATH" == */respaldo_cachyos ]]; then
+    if [[ "$CUSTOM_PATH" == */respaldo_sistema || "$CUSTOM_PATH" == */respaldo_cachyos ]]; then
         RESPALDO_DIR="$CUSTOM_PATH"
+    elif [ -d "$CUSTOM_PATH/respaldo_sistema" ]; then
+        RESPALDO_DIR="$CUSTOM_PATH/respaldo_sistema"
     elif [ -d "$CUSTOM_PATH/respaldo_cachyos" ]; then
         RESPALDO_DIR="$CUSTOM_PATH/respaldo_cachyos"
     else

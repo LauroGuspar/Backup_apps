@@ -75,7 +75,7 @@ El asistente de restauración cuenta con una interfaz visual unificada en termin
    * **Opción 1**: Carpeta predeterminada (`~/Backup`).
    * **Opción 2**: En la misma carpeta del script (útil si lo ejecutas directamente desde tu unidad USB).
    * **Opción 3**: Una ruta personalizada de tu preferencia.
-3. El script detectará tu sistema y guardará la información en una carpeta llamada `respaldo_cachyos`.
+3. El script detectará tu sistema y guardará la información en una carpeta llamada `respaldo_sistema`.
 4. **Copia de seguridad del instalador**: Al finalizar, los scripts de restauración (`restore_apps.sh` y `restore_tui.py`) se copiarán automáticamente junto a la carpeta de respaldos en el destino que elegiste. Así, solo tendrás que llevarte esa carpeta final a tu USB.
 
 ### Paso 2: Restaurar (En el sistema nuevo)
@@ -148,9 +148,9 @@ Una vez confirmada la selección en la interfaz TUI, se ejecutará el script `re
 ## 🔒 Seguridad y Privacidad (.gitignore)
 
 > [!WARNING]
-> La carpeta de salida del respaldo (`respaldo_cachyos/`) contiene archivos sensibles como el archivo comprimido `dotfiles_config.tar.gz`. Este almacena configuraciones de tu carpeta `~/.config` que **pueden incluir claves de API, tokens de sesión de navegadores, configuraciones de mensajería y llaves de acceso SSH privadas**.
+> La carpeta de salida del respaldo (`respaldo_sistema/` o `respaldo_cachyos/`) contiene archivos sensibles como el archivo comprimido `dotfiles_config.tar.gz`. Este almacena configuraciones de tu carpeta `~/.config` que **pueden incluir claves de API, tokens de sesión de navegadores, configuraciones de mensajería y llaves de acceso SSH privadas**.
 > 
-> El archivo `.gitignore` incluido en este repositorio está configurado específicamente para **excluir e ignorar** la carpeta `respaldo_cachyos/` de cualquier seguimiento de Git. **No elimines esta regla para evitar publicar tus datos personales y credenciales de seguridad en repositorios públicos de GitHub.**
+> El archivo `.gitignore` incluido en este repositorio está configurado específicamente para **excluir e ignorar** estas carpetas de cualquier seguimiento de Git. **No elimines esta regla para evitar publicar tus datos personales y credenciales de seguridad en repositorios públicos de GitHub.**
 
 ---
 

@@ -1,4 +1,6 @@
 # Ignorar directorios de respaldo personal (¡contienen dotfiles y credenciales privadas!)
+respaldo_sistema/
+respaldo_sistema_*/
 respaldo_cachyos/
 respaldo_cachyos_*/
 

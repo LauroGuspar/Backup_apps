@@ -38,7 +38,7 @@ while true; do
     esac
 done
 
-RESPALDO_DIR="$BASE_DIR/respaldo_cachyos"
+RESPALDO_DIR="$BASE_DIR/respaldo_sistema"
 
 # Crear la carpeta de respaldo
 if ! mkdir -p "$RESPALDO_DIR" 2>/dev/null; then
