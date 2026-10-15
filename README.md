@@ -13,25 +13,23 @@ El asistente de restauración cuenta con una interfaz visual unificada en termin
 ## ✨ Características
 
 * **Detección Automática de S.O.**: Detecta automáticamente si el sistema operativo de origen o de destino pertenece a la familia Arch o Debian mediante la presencia de `pacman` o `apt-get`.
-* **Portabilidad Inteligente**: Al realizar un respaldo, los scripts se auto-copian al directorio de destino seleccionado, garantizando que tengas el instalador completo en tu unidad USB o almacenamiento en la nube.
-* **Componentes de Respaldo según el Sistema**:
-  * **En Arch Linux / CachyOS**:
-    * Paquetes oficiales (`pacman`) excluyendo automáticamente kernels, base-devel y paquetes del sistema.
-    * Paquetes comunitarios (`AUR`).
-    * Aplicaciones `Flatpak`.
-    * Configuraciones de usuario (`~/.config`).
-  * **En Debian / Ubuntu / Linux Mint**:
-    * Paquetes oficiales instalados manualmente (`APT`).
-    * Repositorios de terceros (`PPAs`) y llaves GPG de confianza (`/etc/apt/sources.list.d/` y `trusted.gpg.d/`).
-    * Paquetes de software autocontenidos (`Snaps`).
-    * Configuraciones de entorno de escritorio e interfaz gráfica mediante base de datos de configuraciones (`dconf`).
-    * Aplicaciones `Flatpak`.
-    * Configuraciones de usuario (`~/.config`).
-* **TUI Monopágina Interactiva**: Olvídate de menús engorrosos. El asistente de restauración (`restore_tui.py`) inicia una interfaz única:
-  * **Filtro en tiempo real**: Escribe caracteres en cualquier momento para filtrar las listas de paquetes al instante.
-  * **Atajos de teclado rápidos**: `Ctrl+A` para marcar todos los visibles, `Ctrl+X` para desmarcar visibles, `ENTER` para aceptar e iniciar, y `ESC` o `Ctrl+C` para cancelar.
-* **Respaldo de Prevención**: Antes de sobreescribir tu carpeta `~/.config`, el asistente realiza una copia de seguridad local (`~/.config.bak_fecha_hora`) de tus dotfiles originales en el sistema nuevo para evitar pérdidas accidentales.
-* **Registro de Errores Detallado**: Si algún paquete o compilación falla durante la reinstalación, los logs se guardan al final del proceso en `restore_error.log` para su posterior revisión.
+* **Historial de Respaldos y Versionado Automático**: Maneja múltiples respaldos sin sobrescribir el anterior. Nombra las carpetas automáticamente con marca de tiempo (`respaldo_YYYY-MM-DD_HHMMSS`) o permite asignar una etiqueta personalizada. Genera metadatos estructurados en `backup_info.json` y mantiene un enlace simbólico relativo `respaldo_latest`.
+* **Selector Interactivo de Respaldos**: Al ejecutar la restauración, si existen varios respaldos disponibles, muestra un menú interactivo con detalles (fecha, paquetes, dotfiles, appimages) para elegir exactamente cuál restaurar.
+* **Clasificación y Filtrado Cíclico con [TAB] (Apps vs. Dependencias)**:
+  * Separa automáticamente los programas principales de usuario de las librerías, fuentes y componentes del sistema.
+  * **Por defecto**: Solo se muestran las aplicaciones principales (preseleccionadas con `[X]`).
+  * **Al presionar [TAB]**: Muestra únicamente las dependencias del sistema (desmarcadas por defecto `[ ]`).
+  * **Al presionar [TAB] de nuevo**: Muestra el catálogo completo, distinguiendo dependencias con la etiqueta `[Dependencia]`.
+* **Detección y Respaldo Inteligente de AppImages**: Detecta ejecutables AppImage en el sistema (`~/Applications`, `~/.local/bin`, etc.) y pregunta de forma interactiva si se desean incluir en el respaldo junto con sus accesos `.desktop`. Al restaurar, verifica dependencias FUSE (`fuse2`), restaura permisos de ejecución (`chmod +x`) y actualiza el menú del sistema.
+* **Respaldo Modular de Configuraciones (`~/.config`)**: Pregunta si se desea incluir la carpeta `~/.config` [S/n] para permitir respaldos más ligeros y rápidos cuando solo se requieran paquetes.
+* **Portabilidad Total**: Al respaldar, los scripts se auto-copian al directorio base y dentro de la carpeta del propio respaldo para que cada copia sea autónoma y compartible.
+* **TUI Monopágina Optimizada (Python Curses)**:
+  * **Respuesta instantánea de [ESC]**: Descarte y retorno inmediato sin retardos de terminal.
+  * **Filtro en tiempo real**: Escribe caracteres en cualquier momento para filtrar las listas al instante.
+  * **Atajos de teclado**: `[TAB]` para alternar vista, `Ctrl+A` para marcar todos los visibles, `Ctrl+X` para desmarcar visibles, `[Espacio]` para alternar, `[ENTER]` para guardar y `[ESC]` para descartar y regresar.
+* **Respaldo de Prevención**: Antes de sobreescribir `~/.config`, realiza una copia local de seguridad (`~/.config.bak_fecha_hora`).
+* **Registro de Errores Detallado**: Los incidentes se guardan en `restore_error.log`.
+
 
 ---
 
@@ -75,17 +73,28 @@ El asistente de restauración cuenta con una interfaz visual unificada en termin
    * **Opción 1**: Carpeta predeterminada (`~/Backup`).
    * **Opción 2**: En la misma carpeta del script (útil si lo ejecutas directamente desde tu unidad USB).
    * **Opción 3**: Una ruta personalizada de tu preferencia.
-3. El script detectará tu sistema y guardará la información en una carpeta llamada `respaldo_sistema`.
-4. **Copia de seguridad del instalador**: Al finalizar, los scripts de restauración (`restore_apps.sh` y `restore_tui.py`) se copiarán automáticamente junto a la carpeta de respaldos en el destino que elegiste. Así, solo tendrás que llevarte esa carpeta final a tu USB.
+3. **Nombre y etiqueta del respaldo**:
+   * El script propone un nombre automático con fecha (`respaldo_YYYY-MM-DD_HHMMSS`), o puedes escribir tu propio alias o etiqueta.
+   * Se crea también un enlace simbólico relativo `respaldo_latest` que siempre apunta al respaldo más reciente.
+4. **Preguntas interactivas opcionales**:
+   * **Configuraciones (`~/.config`)**: Pregunta si deseas respaldar `.config` [S/n] (Predeterminado: Sí).
+   * **Aplicaciones AppImage**: Si se detectan ejecutables AppImage en tu usuario, pregunta si deseas respaldarlos [s/N] (Predeterminado: No, para evitar backups pesados si no lo deseas).
+5. **Copia de seguridad del instalador y metadatos**:
+   * Al finalizar, se genera `backup_info.json` con los metadatos completos y se copian `restore_apps.sh` y `restore_tui.py` tanto en el directorio base como dentro de la carpeta del propio respaldo para total autonomía.
 
 ### Paso 2: Restaurar (En el sistema nuevo)
 
-1. Copia la carpeta del respaldo a tu nuevo sistema operativo, o colócate directamente en tu unidad externa.
-2. Abre la terminal en el directorio del respaldo y ejecuta:
+1. Lleva tu carpeta de respaldo o unidad externa a tu nueva instalación.
+2. Ejecuta:
    ```bash
    ./restore_apps.sh
    ```
-3. El asistente TUI se abrirá de inmediato. Ajusta tus selecciones (APT/Pacman, Snaps/AUR, Flatpaks, y restauración de `.config`/dconf) y selecciona **ACEPTAR** o pulsa `ENTER` para iniciar el proceso de instalación y restauración.
+3. **Historial de Respaldos**:
+   * Si detecta varios respaldos disponibles, `restore_apps.sh` te mostrará un menú interactivo con la fecha, cantidad de paquetes, dotfiles y AppImages de cada uno para que elijas cuál restaurar (o ingresar una ruta personalizada).
+4. **Asistente Visual TUI**:
+   * Se abrirá la interfaz gráfica en terminal. Por defecto, solo las **Aplicaciones principales** están seleccionadas.
+   * Pulsa `[TAB]` para ver dependencias o ver la lista completa.
+   * Pulsa `ENTER` para confirmar o `ESC` para descartar cambios.
 
 ---
 
@@ -95,30 +104,35 @@ La interfaz TUI se ejecuta completamente en la terminal con una estética oscura
 
 ```text
 ================================================================================
-  ASISTENTE DE RESTAURACIÓN MULTI-SO  (Debian -> Debian)
+  ASISTENTE DE RESTAURACION MULTI-SO  (CachyOS -> Arch)
 ================================================================================
-  [X] Paquetes Oficiales (APT) (125 seleccionados)
-  [X] Aplicaciones Snap (12 seleccionadas)
-  [ ] Aplicaciones Flatpak (0 seleccionadas)
-  [X] Restaurar dotfiles de usuario (~/.config)
-  [X] Restaurar configuraciones de escritorio (dconf)
-  
-  Escriba para buscar: ________________
+  > [ ] Paquetes Oficiales Pacman    (45/205)
+    [ ] Paquetes de AUR (Foreign)    (7/7)
+    [ ] Aplicaciones Flatpak         (1/1)
+    [ ] Aplicaciones AppImage        (7/7)
+    [ ] Restaurar Configs ~/.config  (SI)
+    [ ] Restaurar Conf. Escritorio   (SI)
+    [ ] INICIAR INSTALACION Y RESTAURACION
+    [ ] Salir sin instalar
 ================================================================================
-  Atajos: Ctrl+A (Marcar Todo) | Ctrl+X (Deseleccionar Todo) | ESC (Cancelar)
-  Use [Flechas] para navegar | [Espacio] para alternar | [ENTER] para Aceptar
+  Atajos: [TAB] Alternar Vista (Apps/Deps/Todo) | [Espacio] Marcar/Desmarcar
+  [Ctrl+A] Marcar Todo Visible | [Ctrl+X] Desmarcar Todo | [ESC] Descartar | [ENTER] Guardar
 ================================================================================
 ```
 
 ### Controles de Navegación:
-* **Flecha Arriba / Flecha Abajo**: Mueve el cursor de selección entre las diferentes categorías del menú.
-* **Barra Espaciadora**: Activa/Desactiva (Check/Uncheck) la categoría bajo el cursor.
-* **Escribir directamente**: Si presionas cualquier tecla alfanumérica, se filtrará automáticamente la lista de categorías visibles. Por ejemplo, al escribir "Flat" se mostrará únicamente la opción de Flatpaks.
-* **Retroceso (Backspace)**: Borra caracteres de la barra de búsqueda en tiempo real.
-* **Ctrl+A**: Marca/Selecciona todas las categorías que estén visibles en pantalla en ese momento.
-* **Ctrl+X**: Desmarca/Deselecciona todas las categorías que estén visibles en pantalla en ese momento.
-* **ENTER**: Confirma las selecciones actuales e inicia el proceso de instalación y restauración.
-* **ESC** o **Ctrl+C**: Aborta la herramienta de restauración de forma segura sin realizar cambios.
+* **Flecha Arriba / Flecha Abajo**: Mueve el cursor de selección entre los elementos del menú o de la lista.
+* **Barra Espaciadora**: Activa/Desactiva (Check/Uncheck `[X]`) el elemento seleccionado.
+* **Tecla [TAB]**: Alterna cíclicamente el modo de visualización en las listas de paquetes:
+  1. *Solo Aplicaciones* (preseleccionadas por defecto).
+  2. *Solo Dependencias* (desmarcadas por defecto).
+  3. *Todo (Aplicaciones y Dependencias)* (con etiqueta `[Dependencia]`).
+* **Escribir directamente**: Filtra en tiempo real la lista visible.
+* **Retroceso (Backspace)**: Borra caracteres de la barra de búsqueda.
+* **Ctrl+A**: Marca/Selecciona todos los elementos visibles en pantalla.
+* **Ctrl+X**: Desmarca/Deselecciona todos los elementos visibles en pantalla.
+* **ENTER**: Guarda las selecciones y regresa al menú principal (o inicia la instalación).
+* **ESC**: Descarta inmediatamente cualquier cambio realizado y regresa a la pantalla anterior sin modificar tu selección (respuesta instantánea sin retardos).
 
 ---
 

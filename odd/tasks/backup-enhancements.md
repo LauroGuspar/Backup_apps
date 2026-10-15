@@ -25,10 +25,12 @@ Implement enhancements to `backup_apps.sh`, `restore_apps.sh`, and `restore_tui.
 
 ## Task Checklist
 - [x] **TASK-1**: Corregir tecla ESC y mutación en `restore_tui.py` (ESCDELAY a 25ms, descarte limpio en selector y buscador global) - Commit `94a22bc` (RDD: unavailable / runtime antigravity).
-- [x] **TASK-2**: Agregar paso interactivo para respaldar `~/.config` [S/n] en `backup_apps.sh`.
+- [x] **TASK-2**: Agregar paso interactivo para respaldar `~/.config` [S/n] en `backup_apps.sh` - Commit `1d9459c` (RDD: unavailable / runtime antigravity).
 
 
-- [ ] **TASK-3**: Detección, respaldo y restauración de AppImages (con accesos `.desktop`, permisos y soporte en TUI).
-- [ ] **TASK-4**: Sistema de Historial de Respaldos (nombres automáticos/personalizados, metadatos y selector en `restore_apps.sh`).
-- [ ] **TASK-5**: Clasificación y filtrado cíclico con `[TAB]` en `restore_tui.py` (Apps vs Dependencias).
-- [ ] **TASK-6**: Actualizar `README.md` y realizar pruebas de integración y verificación final.
+- [x] **TASK-3**: Detección, respaldo y restauración de AppImages (con accesos `.desktop`, permisos y soporte en TUI) - Commit `a708685` (RDD: unavailable / runtime antigravity).
+
+- [x] **TASK-4**: Sistema de Historial de Respaldos (nombres automáticos/personalizados, metadatos y selector en `restore_apps.sh`) - Commit `73ca480` (RDD: unavailable / runtime antigravity).
+- [x] **TASK-5**: Clasificación y filtrado cíclico con `[TAB]` en `restore_tui.py` (Apps vs Dependencias) - Commit `7a26527` (RDD: unavailable / runtime antigravity).
+- [x] **TASK-6**: Actualizar `README.md` y realizar pruebas de integración y verificación final.
+
