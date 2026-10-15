@@ -3,6 +3,17 @@ import sys
 import os
 import curses
 
+# Set low ESC delay so Escape key responds immediately without 1000ms lag
+os.environ.setdefault('ESCDELAY', '25')
+
+def is_esc_key(stdscr, ch):
+    if ch == 27:
+        stdscr.nodelay(True)
+        next_ch = stdscr.getch()
+        stdscr.nodelay(False)
+        return next_ch in (-1, 27)
+    return False
+
 def load_pkgs(filepath):
     if not os.path.exists(filepath):
         return []
@@ -118,12 +129,9 @@ def run_select_screen(stdscr, all_pkgs, selected_set, title):
         ch = stdscr.getch()
         
         # ESC key handling (27)
-        if ch == 27:
-            stdscr.nodelay(True)
-            next_ch = stdscr.getch()
-            stdscr.nodelay(False)
-            if next_ch == -1:  # Only Esc was pressed
-                return False
+        if is_esc_key(stdscr, ch):
+            return False
+
                 
         # Backspace handling
         elif ch in (8, 127, 263, curses.KEY_BACKSPACE):
@@ -173,6 +181,8 @@ def run_select_screen(stdscr, all_pkgs, selected_set, title):
             scroll_offset = 0
 
 def run_global_search(stdscr, pacman_pkgs, selected_pacman, aur_pkgs, selected_aur, is_debian=False):
+    temp_pacman = set(selected_pacman)
+    temp_aur = set(selected_aur)
     query = ""
     list_index = 0
     scroll_offset = 0
@@ -227,7 +237,7 @@ def run_global_search(stdscr, pacman_pkgs, selected_pacman, aur_pkgs, selected_a
             if idx >= len(matches):
                 break
             pkg, repo = matches[idx]
-            is_selected = pkg in (selected_pacman if repo == "pacman" else selected_aur)
+            is_selected = pkg in (temp_pacman if repo == "pacman" else temp_aur)
             is_highlighted = idx == list_index
             
             if is_debian:
@@ -280,34 +290,34 @@ def run_global_search(stdscr, pacman_pkgs, selected_pacman, aur_pkgs, selected_a
         stdscr.refresh()
         
         ch = stdscr.getch()
-        if ch == 27:
-            stdscr.nodelay(True)
-            next_ch = stdscr.getch()
-            stdscr.nodelay(False)
-            if next_ch == -1:
-                return False
+        if is_esc_key(stdscr, ch):
+            return False
         elif ch in (8, 127, 263, curses.KEY_BACKSPACE):
             if len(query) > 0:
                 query = query[:-1]
                 list_index = 0
                 scroll_offset = 0
         elif ch in (10, 13, curses.KEY_ENTER):
+            selected_pacman.clear()
+            selected_pacman.update(temp_pacman)
+            selected_aur.clear()
+            selected_aur.update(temp_aur)
             return True
         elif ch == ord(' '):
             if matches:
                 pkg, repo = matches[list_index]
-                sel_set = selected_pacman if repo == "pacman" else selected_aur
+                sel_set = temp_pacman if repo == "pacman" else temp_aur
                 if pkg in sel_set:
                     sel_set.remove(pkg)
                 else:
                     sel_set.add(pkg)
         elif ch == 1:  # Ctrl+A
             for p, repo in matches:
-                sel_set = selected_pacman if repo == "pacman" else selected_aur
+                sel_set = temp_pacman if repo == "pacman" else temp_aur
                 sel_set.add(p)
         elif ch == 24:  # Ctrl+X
             for p, repo in matches:
-                sel_set = selected_pacman if repo == "pacman" else selected_aur
+                sel_set = temp_pacman if repo == "pacman" else temp_aur
                 if p in sel_set:
                     sel_set.remove(p)
         elif ch == curses.KEY_UP:
@@ -329,6 +339,11 @@ def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfile
     curses.init_pair(3, curses.COLOR_GREEN, -1)
     curses.init_pair(4, curses.COLOR_RED, -1)
     curses.curs_set(0)
+    if hasattr(curses, 'set_escdelay'):
+        try:
+            curses.set_escdelay(25)
+        except Exception:
+            pass
     
     # Detect backup OS family by checking file existence
     has_apt = os.path.exists(os.path.join(respaldo_dir, "apt_packages.txt"))
@@ -430,12 +445,8 @@ def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfile
         stdscr.refresh()
         
         ch = stdscr.getch()
-        if ch == 27:
-            stdscr.nodelay(True)
-            next_ch = stdscr.getch()
-            stdscr.nodelay(False)
-            if next_ch == -1:
-                return 1
+        if is_esc_key(stdscr, ch):
+            return 1
         elif ch == curses.KEY_UP:
             if menu_index > 0:
                 menu_index -= 1
