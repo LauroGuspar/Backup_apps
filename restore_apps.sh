@@ -48,6 +48,7 @@ echo "S.O. Detectado: Familia $OS_FAMILY"
 TEMP_PACMAN=$(mktemp)
 TEMP_AUR=$(mktemp)
 TEMP_FLATPAK=$(mktemp)
+TEMP_APPIMAGE=$(mktemp)
 DOTFILES_STATE_FILE="/tmp/cachy_restore_dotfiles_state"
 DCONF_STATE_FILE="/tmp/cachy_restore_dconf_state"
 
@@ -63,6 +64,7 @@ else
     [ -f "$RESPALDO_DIR/snap_packages.txt" ] && cp "$RESPALDO_DIR/snap_packages.txt" "$TEMP_AUR"
 fi
 [ -f "$RESPALDO_DIR/flatpak_packages.txt" ] && cp "$RESPALDO_DIR/flatpak_packages.txt" "$TEMP_FLATPAK"
+[ -f "$RESPALDO_DIR/appimages_list.txt" ] && cp "$RESPALDO_DIR/appimages_list.txt" "$TEMP_APPIMAGE"
 
 # Ejecutar el Asistente de Selección TUI en Python Curses
 python3 "$(dirname "$(readlink -f "$0")")/restore_tui.py" \
@@ -71,13 +73,14 @@ python3 "$(dirname "$(readlink -f "$0")")/restore_tui.py" \
         "$TEMP_AUR" \
         "$TEMP_FLATPAK" \
         "$DOTFILES_STATE_FILE" \
-        "$DCONF_STATE_FILE"
+        "$DCONF_STATE_FILE" \
+        "$TEMP_APPIMAGE"
 
 TUI_EXIT=$?
 
 if [ $TUI_EXIT -ne 0 ]; then
     echo "Instalación cancelada."
-    rm -f "$TEMP_PACMAN" "$TEMP_AUR" "$TEMP_FLATPAK" "$DOTFILES_STATE_FILE" "$DCONF_STATE_FILE"
+    rm -f "$TEMP_PACMAN" "$TEMP_AUR" "$TEMP_FLATPAK" "$TEMP_APPIMAGE" "$DOTFILES_STATE_FILE" "$DCONF_STATE_FILE"
     clear
     exit 0
 fi
@@ -105,20 +108,20 @@ echo "" > "$LOG_FILE"
 if [ "$OS_FAMILY" = "arch" ]; then
     # Actualizar base de datos del sistema Arch
     echo ""
-    echo "[1/5] Actualizando bases de datos del sistema..."
+    echo "[1/6] Actualizando bases de datos del sistema..."
     sudo pacman -Syu --noconfirm 2>> "$LOG_FILE"
 
     # 1. Instalar paquetes oficiales de pacman
     if [ -s "$TEMP_PACMAN" ]; then
         echo ""
-        echo "[2/5] Instalando paquetes oficiales de Pacman..."
+        echo "[2/6] Instalando paquetes oficiales de Pacman..."
         sudo pacman -S --needed --noconfirm - < "$TEMP_PACMAN" 2>> "$LOG_FILE"
     fi
 
     # 2. Instalar paquetes de AUR (yay/paru)
     if [ -s "$TEMP_AUR" ]; then
         echo ""
-        echo "[3/5] Instalando paquetes de AUR (Foreign)..."
+        echo "[3/6] Instalando paquetes de AUR (Foreign)..."
         if command -v yay &> /dev/null; then
             yay -S --needed --noconfirm $(cat "$TEMP_AUR") 2>> "$LOG_FILE"
         elif command -v paru &> /dev/null; then
@@ -135,7 +138,7 @@ else
     # Restaurar repositorios PPA
     if [ -f "$RESPALDO_DIR/apt_sources.tar.gz" ]; then
         echo ""
-        echo "[1/5] Restaurando repositorios PPA y llaves GPG..."
+        echo "[1/6] Restaurando repositorios PPA y llaves GPG..."
         sudo tar -xzf "$RESPALDO_DIR/apt_sources.tar.gz" -C /etc/apt/ 2>> "$LOG_FILE"
     fi
 
@@ -146,14 +149,14 @@ else
     # 1. Instalar paquetes oficiales APT
     if [ -s "$TEMP_PACMAN" ]; then
         echo ""
-        echo "[2/5] Instalando paquetes oficiales de APT..."
+        echo "[2/6] Instalando paquetes oficiales de APT..."
         sudo apt-get install -y --ignore-missing $(cat "$TEMP_PACMAN") 2>> "$LOG_FILE"
     fi
 
     # 2. Instalar aplicaciones Snap
     if [ -s "$TEMP_AUR" ]; then
         echo ""
-        echo "[3/5] Instalando aplicaciones Snap..."
+        echo "[3/6] Instalando aplicaciones Snap..."
         if ! command -v snap &> /dev/null; then
             sudo apt-get install -y snapd 2>> "$LOG_FILE"
         fi
@@ -168,7 +171,7 @@ fi
 # 3. Instalar aplicaciones Flatpak
 if [ -s "$TEMP_FLATPAK" ]; then
     echo ""
-    echo "[4/5] Instalando aplicaciones Flatpak..."
+    echo "[4/6] Instalando aplicaciones Flatpak..."
     if ! command -v flatpak &> /dev/null; then
         if [ "$OS_FAMILY" = "arch" ]; then
             sudo pacman -S --needed --noconfirm flatpak 2>> "$LOG_FILE"
@@ -179,10 +182,51 @@ if [ -s "$TEMP_FLATPAK" ]; then
     xargs -a "$TEMP_FLATPAK" flatpak install -y --or-update 2>> "$LOG_FILE"
 fi
 
-# 4. Restaurar archivos de configuración (~/.config)
+# 4. Restaurar aplicaciones AppImage
+if [ -s "$TEMP_APPIMAGE" ] && [ -d "$RESPALDO_DIR/appimages" ]; then
+    echo ""
+    echo "[5/6] Restaurando aplicaciones AppImage..."
+    mkdir -p "$HOME/Applications"
+
+    # Verificar e instalar soporte FUSE 2 para AppImages si es necesario
+    if [ "$OS_FAMILY" = "arch" ]; then
+        if ! pacman -Q fuse2 &>/dev/null; then
+            echo "   Instalando soporte FUSE 2 para AppImages (fuse2)..."
+            sudo pacman -S --needed --noconfirm fuse2 2>> "$LOG_FILE" || true
+        fi
+    else
+        if ! dpkg -s libfuse2 &>/dev/null && ! dpkg -s libfuse2t64 &>/dev/null; then
+            echo "   Instalando soporte FUSE 2 para AppImages (libfuse2)..."
+            sudo apt-get install -y libfuse2 2>> "$LOG_FILE" || true
+        fi
+    fi
+
+    while IFS= read -r app_name || [ -n "$app_name" ]; do
+        [ -z "$app_name" ] && continue
+        if [ -f "$RESPALDO_DIR/appimages/$app_name" ]; then
+            echo "   Restaurando AppImage: $app_name..."
+            cp "$RESPALDO_DIR/appimages/$app_name" "$HOME/Applications/$app_name"
+            chmod +x "$HOME/Applications/$app_name"
+        fi
+    done < "$TEMP_APPIMAGE"
+
+    if [ -d "$RESPALDO_DIR/appimages/desktop_entries" ]; then
+        shopt -s nullglob
+        desktop_files=("$RESPALDO_DIR/appimages/desktop_entries/"*.desktop)
+        shopt -u nullglob
+        if [ ${#desktop_files[@]} -gt 0 ]; then
+            echo "   Restaurando accesos directos de escritorio (.desktop)..."
+            mkdir -p "$HOME/.local/share/applications"
+            cp "$RESPALDO_DIR/appimages/desktop_entries/"*.desktop "$HOME/.local/share/applications/"
+            update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
+        fi
+    fi
+fi
+
+# 5. Restaurar archivos de configuración (~/.config)
 if [ "$RESTORE_DOTFILES" = "SÍ" ] && [ -f "$RESPALDO_DIR/dotfiles_config.tar.gz" ]; then
     echo ""
-    echo "[5/5] Restaurando archivos de configuración (~/.config)..."
+    echo "[6/6] Restaurando archivos de configuración (~/.config)..."
     if [ -d "$HOME/.config" ]; then
         BACKUP_SUF="bak_$(date +%F_%H%M%S)"
         echo "   Respaldando carpeta ~/.config original limpia como ~/.config.$BACKUP_SUF"
@@ -192,7 +236,7 @@ if [ "$RESTORE_DOTFILES" = "SÍ" ] && [ -f "$RESPALDO_DIR/dotfiles_config.tar.gz
     echo "   ¡Configuraciones y archivos de Niri/entorno restaurados con éxito!"
 fi
 
-# 5. Restaurar configuraciones de dconf (Debian/Ubuntu)
+# 6. Restaurar configuraciones de dconf (Debian/Ubuntu)
 if [ "$OS_FAMILY" = "debian" ] && [ "$RESTORE_DCONF" = "SI" ]; then
     if [ -f "$RESPALDO_DIR/dconf_settings.ini" ] && command -v dconf &> /dev/null; then
         echo ""
@@ -202,7 +246,7 @@ if [ "$OS_FAMILY" = "debian" ] && [ "$RESTORE_DCONF" = "SI" ]; then
 fi
 
 # Limpieza de archivos temporales
-rm -f "$TEMP_PACMAN" "$TEMP_AUR" "$TEMP_FLATPAK"
+rm -f "$TEMP_PACMAN" "$TEMP_AUR" "$TEMP_FLATPAK" "$TEMP_APPIMAGE"
 
 # Mostrar estado final
 echo ""

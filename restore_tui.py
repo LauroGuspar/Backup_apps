@@ -331,7 +331,7 @@ def run_global_search(stdscr, pacman_pkgs, selected_pacman, aur_pkgs, selected_a
             list_index = 0
             scroll_offset = 0
 
-def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfiles_state_file, dconf_state_file):
+def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfiles_state_file, dconf_state_file="/tmp/cachy_restore_dconf_state", temp_appimages=None):
     curses.start_color()
     curses.use_default_colors()
     curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_CYAN)
@@ -359,12 +359,14 @@ def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfile
         aur_all = load_pkgs(os.path.join(respaldo_dir, "aur_packages.txt"))
         
     flatpak_all = load_pkgs(os.path.join(respaldo_dir, "flatpak_packages.txt"))
+    appimages_all = load_pkgs(os.path.join(respaldo_dir, "appimages_list.txt"))
     has_dotfiles = os.path.exists(os.path.join(respaldo_dir, "dotfiles_config.tar.gz"))
     has_dconf = os.path.exists(os.path.join(respaldo_dir, "dconf_settings.ini"))
     
     selected_pacman = set(load_pkgs(temp_pacman)) if os.path.exists(temp_pacman) and os.path.getsize(temp_pacman) > 0 else set(pacman_all)
     selected_aur = set(load_pkgs(temp_aur)) if os.path.exists(temp_aur) and os.path.getsize(temp_aur) > 0 else set(aur_all)
     selected_flatpak = set(load_pkgs(temp_flatpak)) if os.path.exists(temp_flatpak) and os.path.getsize(temp_flatpak) > 0 else set(flatpak_all)
+    selected_appimages = set(load_pkgs(temp_appimages)) if temp_appimages and os.path.exists(temp_appimages) and os.path.getsize(temp_appimages) > 0 else set(appimages_all)
     
     restore_dotfiles = "SI"
     if os.path.exists(dotfiles_state_file):
@@ -391,6 +393,9 @@ def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfile
         
         if flatpak_all:
             menu_items.append(("flatpak", f"Aplicaciones Flatpak         ({len(selected_flatpak & set(flatpak_all))}/{len(flatpak_all)})"))
+            
+        if appimages_all:
+            menu_items.append(("appimage", f"Aplicaciones AppImage        ({len(selected_appimages & set(appimages_all))}/{len(appimages_all)})"))
             
         if has_dotfiles:
             menu_items.append(("dotfiles", f"Restaurar Configs ~/.config  ({restore_dotfiles})"))
@@ -470,6 +475,10 @@ def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfile
                 temp_set = set(selected_flatpak)
                 if run_select_screen(stdscr, flatpak_all, temp_set, "Seleccionar Aplicaciones Flatpak"):
                     selected_flatpak = temp_set
+            elif key == "appimage":
+                temp_set = set(selected_appimages)
+                if run_select_screen(stdscr, appimages_all, temp_set, "Seleccionar Aplicaciones AppImage"):
+                    selected_appimages = temp_set
             elif key == "dotfiles":
                 restore_dotfiles = "NO" if restore_dotfiles == "SI" else "SI"
             elif key == "dconf":
@@ -481,6 +490,8 @@ def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfile
                 save_pkgs(temp_aur, aur_all, selected_aur)
                 if flatpak_all:
                     save_pkgs(temp_flatpak, flatpak_all, selected_flatpak)
+                if temp_appimages:
+                    save_pkgs(temp_appimages, appimages_all, selected_appimages)
                 with open(dotfiles_state_file, "w") as f:
                     f.write(restore_dotfiles + "\n")
                 if has_dconf:
@@ -492,7 +503,7 @@ def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfile
 
 if __name__ == "__main__":
     if len(sys.argv) < 6:
-        print("Usage: restore_tui.py <respaldo_dir> <temp_pacman> <temp_aur> <temp_flatpak> <dotfiles_state_file> [dconf_state_file]")
+        print("Usage: restore_tui.py <respaldo_dir> <temp_pacman> <temp_aur> <temp_flatpak> <dotfiles_state_file> [dconf_state_file] [temp_appimages]")
         sys.exit(1)
         
     respaldo_dir = sys.argv[1]
@@ -501,9 +512,10 @@ if __name__ == "__main__":
     temp_flatpak = sys.argv[4]
     dotfiles_state_file = sys.argv[5]
     dconf_state_file = sys.argv[6] if len(sys.argv) > 6 else "/tmp/cachy_restore_dconf_state"
+    temp_appimages = sys.argv[7] if len(sys.argv) > 7 else None
     
     try:
-        ret = curses.wrapper(main_menu, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfiles_state_file, dconf_state_file)
+        ret = curses.wrapper(main_menu, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfiles_state_file, dconf_state_file, temp_appimages)
         sys.exit(ret)
     except KeyboardInterrupt:
         sys.exit(1)
