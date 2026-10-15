@@ -32,5 +32,5 @@ Implement enhancements to `backup_apps.sh`, `restore_apps.sh`, and `restore_tui.
 
 - [x] **TASK-4**: Sistema de Historial de Respaldos (nombres automáticos/personalizados, metadatos y selector en `restore_apps.sh`) - Commit `73ca480` (RDD: unavailable / runtime antigravity).
 - [x] **TASK-5**: Clasificación y filtrado cíclico con `[TAB]` en `restore_tui.py` (Apps vs Dependencias) - Commit `7a26527` (RDD: unavailable / runtime antigravity).
-- [x] **TASK-6**: Actualizar `README.md` y realizar pruebas de integración y verificación final.
+- [x] **TASK-6**: Actualizar `README.md` y realizar pruebas de integración y verificación final - Commit `1a4ed40` (RDD: unavailable / runtime antigravity).
 
