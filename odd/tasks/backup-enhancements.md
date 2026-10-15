@@ -24,8 +24,10 @@ Implement enhancements to `backup_apps.sh`, `restore_apps.sh`, and `restore_tui.
 - TDD Mode: Disabled / Functional validation checks.
 
 ## Task Checklist
-- [ ] **TASK-1**: Corregir tecla ESC y mutación en `restore_tui.py` (ESCDELAY a 25ms, descarte limpio en selector y buscador global).
-- [ ] **TASK-2**: Agregar paso interactivo para respaldar `~/.config` [S/n] en `backup_apps.sh`.
+- [x] **TASK-1**: Corregir tecla ESC y mutación en `restore_tui.py` (ESCDELAY a 25ms, descarte limpio en selector y buscador global) - Commit `94a22bc` (RDD: unavailable / runtime antigravity).
+- [x] **TASK-2**: Agregar paso interactivo para respaldar `~/.config` [S/n] en `backup_apps.sh`.
+
+
 - [ ] **TASK-3**: Detección, respaldo y restauración de AppImages (con accesos `.desktop`, permisos y soporte en TUI).
 - [ ] **TASK-4**: Sistema de Historial de Respaldos (nombres automáticos/personalizados, metadatos y selector en `restore_apps.sh`).
 - [ ] **TASK-5**: Clasificación y filtrado cíclico con `[TAB]` en `restore_tui.py` (Apps vs Dependencias).

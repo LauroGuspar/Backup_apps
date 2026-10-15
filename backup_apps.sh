@@ -38,7 +38,19 @@ while true; do
     esac
 done
 
+# Preguntar si se desea respaldar la carpeta de configuraciones ~/.config
+echo ""
+echo "=== Configuración de Componentes Opcionales ==="
+read -p "¿Desea respaldar la carpeta de configuraciones (~/.config)? [S/n] (Por defecto: Sí): " RESP_CONFIG
+RESP_CONFIG="${RESP_CONFIG:-S}"
+if [[ "$RESP_CONFIG" =~ ^[sSyY]$ ]]; then
+    BACKUP_CONFIG=true
+else
+    BACKUP_CONFIG=false
+fi
+
 RESPALDO_DIR="$BASE_DIR/respaldo_sistema"
+
 
 # Crear la carpeta de respaldo
 if ! mkdir -p "$RESPALDO_DIR" 2>/dev/null; then
@@ -121,24 +133,28 @@ else
 fi
 
 # 4. Guardar configuraciones (Dotfiles) - ¡Especialmente Niri!
-echo "[4/4] Creando respaldo de configuraciones (~/.config)..."
-if [ -d "$HOME/.config" ]; then
-    # Excluimos directorios pesados, binarios y cachés para no inflar el archivo
-    tar --exclude="*cache*" \
-        --exclude="*Cache*" \
-        --exclude="*discord/app-*" \
-        --exclude="*google-chrome*" \
-        --exclude="*microsoft-edge*" \
-        --exclude="*Brave-Browser*" \
-        --exclude="*BraveSoftware*" \
-        --exclude="*chromium*" \
-        --exclude="*Chromium*" \
-        --exclude="*Code/CachedData*" \
-        --exclude="*Code/User/History*" \
-        -czf "$RESPALDO_DIR/dotfiles_config.tar.gz" -C "$HOME" .config
-    echo "-> Respaldado ~/.config en dotfiles_config.tar.gz (excluyendo cachés y binarios autodescargados)"
+if [ "$BACKUP_CONFIG" = true ]; then
+    echo "[4/4] Creando respaldo de configuraciones (~/.config)..."
+    if [ -d "$HOME/.config" ]; then
+        # Excluimos directorios pesados, binarios y cachés para no inflar el archivo
+        tar --exclude="*cache*" \
+            --exclude="*Cache*" \
+            --exclude="*discord/app-*" \
+            --exclude="*google-chrome*" \
+            --exclude="*microsoft-edge*" \
+            --exclude="*Brave-Browser*" \
+            --exclude="*BraveSoftware*" \
+            --exclude="*chromium*" \
+            --exclude="*Chromium*" \
+            --exclude="*Code/CachedData*" \
+            --exclude="*Code/User/History*" \
+            -czf "$RESPALDO_DIR/dotfiles_config.tar.gz" -C "$HOME" .config
+        echo "-> Respaldado ~/.config en dotfiles_config.tar.gz (excluyendo cachés y binarios autodescargados)"
+    else
+        echo "-> No se encontró la carpeta ~/.config"
+    fi
 else
-    echo "-> No se encontró la carpeta ~/.config"
+    echo "[4/4] Omitiendo respaldo de ~/.config por elección del usuario."
 fi
 
 echo "=========================================================="
@@ -169,5 +185,7 @@ if [ -f "$RESPALDO_DIR/dconf_settings.ini" ]; then
 fi
 if [ -f "$RESPALDO_DIR/dotfiles_config.tar.gz" ]; then
     echo "  - Configuraciones (~/.config):  $(du -sh "$RESPALDO_DIR/dotfiles_config.tar.gz" | cut -f1)"
+else
+    echo "  - Configuraciones (~/.config):  Omitido"
 fi
 echo "=========================================================="
