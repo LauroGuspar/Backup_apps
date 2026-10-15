@@ -170,6 +170,82 @@ else
     fi
 fi
 
+# Clasificación de paquetes (Aplicaciones vs Dependencias)
+echo "-> Clasificando paquetes (Aplicaciones vs Dependencias)..."
+if command -v python3 &>/dev/null; then
+    python3 -c '
+import sys, os, glob
+
+respaldo_dir = sys.argv[1]
+os_family = sys.argv[2]
+
+cli_apps = {
+    "neovim", "fastfetch", "ghostty", "lazygit", "htop", "btop", "nvtop",
+    "ranger", "ripgrep", "git", "github-cli", "docker", "docker-compose",
+    "tmux", "zsh", "fish", "micro", "wget", "curl", "tree"
+}
+
+apps = set(cli_apps)
+
+if os_family == "arch":
+    for f in glob.glob("/var/lib/pacman/local/*/files"):
+        try:
+            with open(f, "r", errors="ignore") as fp:
+                content = fp.read()
+                if "usr/share/applications/" in content and ".desktop" in content:
+                    desc_path = os.path.join(os.path.dirname(f), "desc")
+                    with open(desc_path, "r", errors="ignore") as dp:
+                        lines = dp.read().splitlines()
+                        if len(lines) >= 2:
+                            apps.add(lines[1].strip())
+        except Exception:
+            pass
+elif os_family == "debian":
+    for f in glob.glob("/var/lib/dpkg/info/*.list"):
+        try:
+            with open(f, "r", errors="ignore") as fp:
+                content = fp.read()
+                if "usr/share/applications/" in content and ".desktop" in content:
+                    pkg_name = os.path.basename(f).split(":")[0].replace(".list", "")
+                    apps.add(pkg_name)
+        except Exception:
+            pass
+
+# Escaneo adicional de archivos .desktop en /usr/share/applications/
+for d in glob.glob("/usr/share/applications/*.desktop"):
+    stem = os.path.splitext(os.path.basename(d))[0].lower()
+    apps.add(stem)
+
+candidates = set()
+for fname in ["pacman_packages.txt", "aur_packages.txt", "apt_packages.txt"]:
+    p = os.path.join(respaldo_dir, fname)
+    if os.path.exists(p):
+        with open(p, "r", encoding="utf-8", errors="ignore") as fp:
+            candidates.update(line.strip() for line in fp if line.strip())
+
+classified = sorted([pkg for pkg in candidates if pkg in apps])
+with open(os.path.join(respaldo_dir, "classified_apps.txt"), "w", encoding="utf-8") as fp:
+    for pkg in classified:
+        fp.write(f"{pkg}\n")
+' "$RESPALDO_DIR" "$OS_FAMILY"
+else
+    touch "$RESPALDO_DIR/classified_apps.txt"
+    CLI_APPS="neovim fastfetch ghostty lazygit htop btop nvtop ranger ripgrep git github-cli docker docker-compose tmux zsh fish micro wget curl tree"
+    TEMP_DETECTED="$RESPALDO_DIR/temp_detected_apps.txt"
+    > "$TEMP_DETECTED"
+    if [ "$OS_FAMILY" = "arch" ]; then
+        grep -l "usr/share/applications/.*\.desktop" /var/lib/pacman/local/*/files 2>/dev/null | sed 's|/files$|/desc|' | xargs awk 'FNR==2 {print}' 2>/dev/null >> "$TEMP_DETECTED" || true
+    elif [ "$OS_FAMILY" = "debian" ]; then
+        grep -l "usr/share/applications/.*\.desktop" /var/lib/dpkg/info/*.list 2>/dev/null | sed 's|.*/||; s|:.*||; s|\.list$||' >> "$TEMP_DETECTED" || true
+    fi
+    for capp in $CLI_APPS; do
+        echo "$capp" >> "$TEMP_DETECTED"
+    done
+    sort -u "$TEMP_DETECTED" -o "$TEMP_DETECTED"
+    cat "$RESPALDO_DIR/pacman_packages.txt" "$RESPALDO_DIR/aur_packages.txt" "$RESPALDO_DIR/apt_packages.txt" 2>/dev/null | sort -u | grep -Fxf "$TEMP_DETECTED" > "$RESPALDO_DIR/classified_apps.txt" 2>/dev/null || true
+    rm -f "$TEMP_DETECTED"
+fi
+
 # 3. Guardar paquetes Flatpak (si existen)
 if command -v flatpak &> /dev/null; then
     echo "[3/5] Guardando lista de aplicaciones Flatpak..."
@@ -250,6 +326,20 @@ CNT_FLATPAK=0
 CNT_APPIMAGE=0
 [ -f "$RESPALDO_DIR/appimages_list.txt" ] && CNT_APPIMAGE=$(wc -l < "$RESPALDO_DIR/appimages_list.txt" 2>/dev/null | tr -d ' ' || echo 0)
 
+CNT_PACMAN_APPS=0
+CNT_PACMAN_DEPS=0
+if [ -f "$RESPALDO_DIR/classified_apps.txt" ]; then
+    if [ "$OS_FAMILY" = "arch" ] && [ -f "$RESPALDO_DIR/pacman_packages.txt" ]; then
+        CNT_PACMAN_APPS=$(grep -Fxf "$RESPALDO_DIR/classified_apps.txt" "$RESPALDO_DIR/pacman_packages.txt" 2>/dev/null | wc -l | tr -d ' ' || echo 0)
+        CNT_PACMAN_DEPS=$((CNT_PACMAN - CNT_PACMAN_APPS))
+        [ "$CNT_PACMAN_DEPS" -lt 0 ] && CNT_PACMAN_DEPS=0
+    elif [ "$OS_FAMILY" = "debian" ] && [ -f "$RESPALDO_DIR/apt_packages.txt" ]; then
+        CNT_PACMAN_APPS=$(grep -Fxf "$RESPALDO_DIR/classified_apps.txt" "$RESPALDO_DIR/apt_packages.txt" 2>/dev/null | wc -l | tr -d ' ' || echo 0)
+        CNT_PACMAN_DEPS=$((CNT_APT - CNT_PACMAN_APPS))
+        [ "$CNT_PACMAN_DEPS" -lt 0 ] && CNT_PACMAN_DEPS=0
+    fi
+fi
+
 HAS_DOTFILES=false
 [ -f "$RESPALDO_DIR/dotfiles_config.tar.gz" ] && HAS_DOTFILES=true
 
@@ -278,15 +368,18 @@ data = {
         "apt": int(sys.argv[10]),
         "snap": int(sys.argv[11]),
         "flatpak": int(sys.argv[12]),
-        "appimage": int(sys.argv[13])
+        "appimage": int(sys.argv[13]),
+        "pacman_apps": int(sys.argv[14]),
+        "pacman_deps": int(sys.argv[15])
     }
 }
-with open(sys.argv[14], "w", encoding="utf-8") as f:
+with open(sys.argv[16], "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
     f.write("\n")
 ' "$BACKUP_NAME" "$CREATED_AT" "$TIMESTAMP" "$OS_FAMILY" "$HOST_NAME" \
   "$HAS_DOTFILES" "$HAS_APPIMAGES" "$CNT_PACMAN" "$CNT_AUR" "$CNT_APT" \
-  "$CNT_SNAP" "$CNT_FLATPAK" "$CNT_APPIMAGE" "$RESPALDO_DIR/backup_info.json"
+  "$CNT_SNAP" "$CNT_FLATPAK" "$CNT_APPIMAGE" "$CNT_PACMAN_APPS" "$CNT_PACMAN_DEPS" \
+  "$RESPALDO_DIR/backup_info.json"
 else
     cat <<EOF > "$RESPALDO_DIR/backup_info.json"
 {
@@ -303,7 +396,9 @@ else
     "apt": $CNT_APT,
     "snap": $CNT_SNAP,
     "flatpak": $CNT_FLATPAK,
-    "appimage": $CNT_APPIMAGE
+    "appimage": $CNT_APPIMAGE,
+    "pacman_apps": $CNT_PACMAN_APPS,
+    "pacman_deps": $CNT_PACMAN_DEPS
   }
 }
 EOF
@@ -321,13 +416,21 @@ fi
 echo "----------------------------------------------------------"
 echo "Resumen de lo respaldado (Familia: $OS_FAMILY):"
 if [ -f "$RESPALDO_DIR/pacman_packages.txt" ]; then
-    echo "  - Paquetes Oficiales (Pacman): $(wc -l < "$RESPALDO_DIR/pacman_packages.txt") paquetes"
+    if [ -f "$RESPALDO_DIR/classified_apps.txt" ]; then
+        echo "  - Paquetes Oficiales (Pacman): $CNT_PACMAN paquetes ($CNT_PACMAN_APPS aplicaciones, $CNT_PACMAN_DEPS dependencias)"
+    else
+        echo "  - Paquetes Oficiales (Pacman): $(wc -l < "$RESPALDO_DIR/pacman_packages.txt") paquetes"
+    fi
 fi
 if [ -f "$RESPALDO_DIR/aur_packages.txt" ]; then
     echo "  - Paquetes AUR (Foreign):      $(wc -l < "$RESPALDO_DIR/aur_packages.txt") paquetes"
 fi
 if [ -f "$RESPALDO_DIR/apt_packages.txt" ]; then
-    echo "  - Paquetes Oficiales (APT):    $(wc -l < "$RESPALDO_DIR/apt_packages.txt") paquetes"
+    if [ -f "$RESPALDO_DIR/classified_apps.txt" ]; then
+        echo "  - Paquetes Oficiales (APT):    $CNT_APT paquetes ($CNT_PACMAN_APPS aplicaciones, $CNT_PACMAN_DEPS dependencias)"
+    else
+        echo "  - Paquetes Oficiales (APT):    $(wc -l < "$RESPALDO_DIR/apt_packages.txt") paquetes"
+    fi
 fi
 if [ -f "$RESPALDO_DIR/snap_packages.txt" ]; then
     echo "  - Aplicaciones Snap:           $(wc -l < "$RESPALDO_DIR/snap_packages.txt") snaps"
@@ -350,6 +453,9 @@ if [ -f "$RESPALDO_DIR/dotfiles_config.tar.gz" ]; then
     echo "  - Configuraciones (~/.config):  $(du -sh "$RESPALDO_DIR/dotfiles_config.tar.gz" | cut -f1)"
 else
     echo "  - Configuraciones (~/.config):  Omitido"
+fi
+if [ -f "$RESPALDO_DIR/classified_apps.txt" ]; then
+    echo "  - Clasificación de apps:       classified_apps.txt ($CNT_PACMAN_APPS aplicaciones identificadas)"
 fi
 echo "  - Metadatos del respaldo:      backup_info.json"
 echo "=========================================================="

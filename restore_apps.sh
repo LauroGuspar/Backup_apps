@@ -267,12 +267,20 @@ DCONF_STATE_FILE="/tmp/cachy_restore_dconf_state"
 echo "SI" > "$DOTFILES_STATE_FILE"
 echo "SI" > "$DCONF_STATE_FILE"
 
-# Copiar todas por defecto a los temporales (todo seleccionado inicialmente)
+# Copiar paquetes a los temporales (por defecto solo aplicaciones seleccionadas si existe classified_apps.txt)
 if [ "$OS_FAMILY" = "arch" ]; then
-    [ -f "$RESPALDO_DIR/pacman_packages.txt" ] && cp "$RESPALDO_DIR/pacman_packages.txt" "$TEMP_PACMAN"
+    if [ -f "$RESPALDO_DIR/classified_apps.txt" ] && [ -f "$RESPALDO_DIR/pacman_packages.txt" ]; then
+        grep -Fxf "$RESPALDO_DIR/classified_apps.txt" "$RESPALDO_DIR/pacman_packages.txt" > "$TEMP_PACMAN" 2>/dev/null || cp "$RESPALDO_DIR/pacman_packages.txt" "$TEMP_PACMAN"
+    else
+        [ -f "$RESPALDO_DIR/pacman_packages.txt" ] && cp "$RESPALDO_DIR/pacman_packages.txt" "$TEMP_PACMAN"
+    fi
     [ -f "$RESPALDO_DIR/aur_packages.txt" ] && cp "$RESPALDO_DIR/aur_packages.txt" "$TEMP_AUR"
 else
-    [ -f "$RESPALDO_DIR/apt_packages.txt" ] && cp "$RESPALDO_DIR/apt_packages.txt" "$TEMP_PACMAN"
+    if [ -f "$RESPALDO_DIR/classified_apps.txt" ] && [ -f "$RESPALDO_DIR/apt_packages.txt" ]; then
+        grep -Fxf "$RESPALDO_DIR/classified_apps.txt" "$RESPALDO_DIR/apt_packages.txt" > "$TEMP_PACMAN" 2>/dev/null || cp "$RESPALDO_DIR/apt_packages.txt" "$TEMP_PACMAN"
+    else
+        [ -f "$RESPALDO_DIR/apt_packages.txt" ] && cp "$RESPALDO_DIR/apt_packages.txt" "$TEMP_PACMAN"
+    fi
     [ -f "$RESPALDO_DIR/snap_packages.txt" ] && cp "$RESPALDO_DIR/snap_packages.txt" "$TEMP_AUR"
 fi
 [ -f "$RESPALDO_DIR/flatpak_packages.txt" ] && cp "$RESPALDO_DIR/flatpak_packages.txt" "$TEMP_FLATPAK"

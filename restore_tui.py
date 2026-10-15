@@ -26,7 +26,60 @@ def save_pkgs(filepath, all_pkgs, selected_set):
             if p in selected_set:
                 f.write(f"{p}\n")
 
-def run_select_screen(stdscr, all_pkgs, selected_set, title):
+CLI_APPS = {
+    "neovim", "fastfetch", "ghostty", "lazygit", "htop", "btop", "nvtop",
+    "ranger", "ripgrep", "git", "github-cli", "docker", "docker-compose",
+    "tmux", "zsh", "fish", "micro", "wget", "curl", "tree"
+}
+
+def detect_apps_fallback():
+    apps = set(CLI_APPS)
+    import glob
+    pacman_files = glob.glob("/var/lib/pacman/local/*/files")
+    if pacman_files:
+        for f in pacman_files:
+            try:
+                with open(f, "r", errors="ignore") as fp:
+                    content = fp.read()
+                    if "usr/share/applications/" in content and ".desktop" in content:
+                        desc_path = os.path.join(os.path.dirname(f), "desc")
+                        with open(desc_path, "r", errors="ignore") as dp:
+                            lines = dp.read().splitlines()
+                            if len(lines) >= 2:
+                                apps.add(lines[1].strip())
+            except Exception:
+                pass
+        return apps
+        
+    dpkg_files = glob.glob("/var/lib/dpkg/info/*.list")
+    if dpkg_files:
+        for f in dpkg_files:
+            try:
+                with open(f, "r", errors="ignore") as fp:
+                    content = fp.read()
+                    if "usr/share/applications/" in content and ".desktop" in content:
+                        pkg_name = os.path.basename(f).split(":")[0].replace(".list", "")
+                        apps.add(pkg_name)
+            except Exception:
+                pass
+        return apps
+
+    for d in glob.glob("/usr/share/applications/*.desktop"):
+        stem = os.path.splitext(os.path.basename(d))[0].lower()
+        apps.add(stem)
+    return apps
+
+def run_select_screen(stdscr, all_pkgs, selected_set, title, app_set=None):
+    if app_set is None:
+        app_set = set(all_pkgs)
+        
+    view_mode = 0  # 0: Solo Aplicaciones, 1: Solo Dependencias, 2: Todo
+    view_labels = [
+        "Solo Aplicaciones",
+        "Solo Dependencias",
+        "Todo (Apps + Deps)"
+    ]
+    
     query = ""
     list_index = 0
     scroll_offset = 0
@@ -41,7 +94,16 @@ def run_select_screen(stdscr, all_pkgs, selected_set, title):
             stdscr.getch()
             continue
             
-        filtered_pkgs = [p for p in all_pkgs if query.lower() in p.lower()]
+        if view_mode == 0:
+            mode_pkgs = [p for p in all_pkgs if p in app_set]
+            if not mode_pkgs:
+                mode_pkgs = list(all_pkgs)
+        elif view_mode == 1:
+            mode_pkgs = [p for p in all_pkgs if p not in app_set]
+        else:
+            mode_pkgs = list(all_pkgs)
+            
+        filtered_pkgs = [p for p in mode_pkgs if query.lower() in p.lower()]
         
         if not filtered_pkgs:
             list_index = 0
@@ -54,7 +116,9 @@ def run_select_screen(stdscr, all_pkgs, selected_set, title):
         stdscr.attroff(curses.color_pair(2) | curses.A_BOLD)
         
         # Title (no emojis/stickers)
-        stdscr.addstr(1, 2, f" {title} ", curses.color_pair(2) | curses.A_BOLD | curses.A_REVERSE)
+        curr_view_label = view_labels[view_mode]
+        title_text = f" {title} - [Vista: {curr_view_label}] "
+        stdscr.addstr(1, 2, title_text[:width - 4], curses.color_pair(2) | curses.A_BOLD | curses.A_REVERSE)
         
         # Search Box
         stdscr.addstr(3, 2, "Buscar: ", curses.A_BOLD)
@@ -76,12 +140,16 @@ def run_select_screen(stdscr, all_pkgs, selected_set, title):
             pkg = filtered_pkgs[idx]
             is_selected = pkg in selected_set
             is_highlighted = idx == list_index
+            is_dep = pkg not in app_set
+            
+            tag = "    [Dependencia]" if is_dep else ""
+            pkg_str = f"{pkg}{tag}"
             
             y_pos = 5 + i
             if is_highlighted:
                 # Highlight the whole row
                 checkbox = "[X]" if is_selected else "[ ]"
-                display_str = f" {checkbox} {pkg}"
+                display_str = f" {checkbox} {pkg_str}"
                 display_str = display_str[:list_width - 4].ljust(list_width - 4)
                 stdscr.attron(curses.color_pair(1) | curses.A_BOLD)
                 stdscr.addstr(y_pos, 2, display_str)
@@ -93,7 +161,7 @@ def run_select_screen(stdscr, all_pkgs, selected_set, title):
                     stdscr.addstr(y_pos, 4, "X", curses.color_pair(3) | curses.A_BOLD)
                 else:
                     stdscr.addstr(y_pos, 4, " ")
-                stdscr.addstr(y_pos, 5, f"] {pkg[:list_width-7]}")
+                stdscr.addstr(y_pos, 5, f"] {pkg_str[:list_width - 7]}")
                 
         # Scroll adjustment
         if list_index < scroll_offset:
@@ -104,24 +172,27 @@ def run_select_screen(stdscr, all_pkgs, selected_set, title):
         # Draw Sidebar
         sb_y = 5
         stdscr.addstr(sb_y, sidebar_start, "ACCIONES:", curses.A_BOLD | curses.A_UNDERLINE)
-        stdscr.addstr(sb_y + 2, sidebar_start, "[Ctrl+A] ", curses.color_pair(3) | curses.A_BOLD)
-        stdscr.addstr(sb_y + 2, sidebar_start + 9, "Marcar Todo Visible")
-        stdscr.addstr(sb_y + 3, sidebar_start, "[Ctrl+X] ", curses.color_pair(4) | curses.A_BOLD)
-        stdscr.addstr(sb_y + 3, sidebar_start + 9, "Desmarcar Todo Visible")
-        stdscr.addstr(sb_y + 5, sidebar_start, "[ENTER]  ", curses.color_pair(2) | curses.A_BOLD)
-        stdscr.addstr(sb_y + 5, sidebar_start + 9, "Guardar y Regresar")
-        stdscr.addstr(sb_y + 6, sidebar_start, "[ESC]    ", curses.color_pair(4) | curses.A_BOLD)
-        stdscr.addstr(sb_y + 6, sidebar_start + 9, "Descartar y Regresar")
+        stdscr.addstr(sb_y + 2, sidebar_start, "[TAB]    ", curses.color_pair(2) | curses.A_BOLD)
+        stdscr.addstr(sb_y + 2, sidebar_start + 9, "Cambiar Vista (Apps/Deps/Todo)")
+        stdscr.addstr(sb_y + 3, sidebar_start, "[Ctrl+A] ", curses.color_pair(3) | curses.A_BOLD)
+        stdscr.addstr(sb_y + 3, sidebar_start + 9, "Marcar Todo Visible")
+        stdscr.addstr(sb_y + 4, sidebar_start, "[Ctrl+X] ", curses.color_pair(4) | curses.A_BOLD)
+        stdscr.addstr(sb_y + 4, sidebar_start + 9, "Desmarcar Todo Visible")
+        stdscr.addstr(sb_y + 6, sidebar_start, "[ENTER]  ", curses.color_pair(2) | curses.A_BOLD)
+        stdscr.addstr(sb_y + 6, sidebar_start + 9, "Guardar y Regresar")
+        stdscr.addstr(sb_y + 7, sidebar_start, "[ESC]    ", curses.color_pair(4) | curses.A_BOLD)
+        stdscr.addstr(sb_y + 7, sidebar_start + 9, "Descartar y Regresar")
         
-        stdscr.addstr(sb_y + 9, sidebar_start, "Teclas de control:", curses.A_BOLD)
-        stdscr.addstr(sb_y + 10, sidebar_start, "• Flechas Up/Down: Navegar")
-        stdscr.addstr(sb_y + 11, sidebar_start, "• Espacio: Marcar/Desmarcar")
-        stdscr.addstr(sb_y + 12, sidebar_start, "• Escribe para filtrar")
-        stdscr.addstr(sb_y + 13, sidebar_start, "• Retroceso para borrar")
+        stdscr.addstr(sb_y + 10, sidebar_start, "Teclas de control:", curses.A_BOLD)
+        stdscr.addstr(sb_y + 11, sidebar_start, "• [TAB]: Alternar vista")
+        stdscr.addstr(sb_y + 12, sidebar_start, "• Flechas Up/Down: Navegar")
+        stdscr.addstr(sb_y + 13, sidebar_start, "• Espacio: Marcar/Desmarcar")
+        stdscr.addstr(sb_y + 14, sidebar_start, "• Escribe para filtrar")
+        stdscr.addstr(sb_y + 15, sidebar_start, "• Retroceso para borrar")
         
         sel_count = len([p for p in all_pkgs if p in selected_set])
-        status_bar = f" Seleccionados: {sel_count}/{len(all_pkgs)} | Filtrados: {len(filtered_pkgs)} "
-        stdscr.addstr(height - 2, 2, status_bar.ljust(width - 5), curses.A_REVERSE)
+        status_bar = f" Seleccionados: {sel_count}/{len(all_pkgs)} | [Vista: {curr_view_label}] (Presiona [TAB] para alternar vista) "
+        stdscr.addstr(height - 2, 2, status_bar[:width - 4].ljust(width - 4), curses.A_REVERSE)
         
         stdscr.refresh()
         
@@ -132,6 +203,11 @@ def run_select_screen(stdscr, all_pkgs, selected_set, title):
         if is_esc_key(stdscr, ch):
             return False
 
+        # TAB key handling
+        elif ch in (9, getattr(curses, 'KEY_BTAB', 353)):
+            view_mode = (view_mode + 1) % 3
+            list_index = 0
+            scroll_offset = 0
                 
         # Backspace handling
         elif ch in (8, 127, 263, curses.KEY_BACKSPACE):
@@ -180,7 +256,7 @@ def run_select_screen(stdscr, all_pkgs, selected_set, title):
             list_index = 0
             scroll_offset = 0
 
-def run_global_search(stdscr, pacman_pkgs, selected_pacman, aur_pkgs, selected_aur, is_debian=False):
+def run_global_search(stdscr, pacman_pkgs, selected_pacman, aur_pkgs, selected_aur, is_debian=False, app_set=None):
     temp_pacman = set(selected_pacman)
     temp_aur = set(selected_aur)
     query = ""
@@ -245,10 +321,12 @@ def run_global_search(stdscr, pacman_pkgs, selected_pacman, aur_pkgs, selected_a
             else:
                 repo_label = "[Pacman]" if repo == "pacman" else "[AUR]"
                 
+            dep_label = "    [Dependencia]" if (app_set is not None and pkg not in app_set) else ""
+            
             y_pos = 5 + i
             if is_highlighted:
                 checkbox = "[X]" if is_selected else "[ ]"
-                display_str = f" {checkbox} {pkg}  {repo_label}"
+                display_str = f" {checkbox} {pkg}{dep_label}  {repo_label}"
                 display_str = display_str[:list_width - 4].ljust(list_width - 4)
                 stdscr.attron(curses.color_pair(1) | curses.A_BOLD)
                 stdscr.addstr(y_pos, 2, display_str)
@@ -259,7 +337,8 @@ def run_global_search(stdscr, pacman_pkgs, selected_pacman, aur_pkgs, selected_a
                     stdscr.addstr(y_pos, 4, "X", curses.color_pair(3) | curses.A_BOLD)
                 else:
                     stdscr.addstr(y_pos, 4, " ")
-                stdscr.addstr(y_pos, 5, f"] {pkg[:list_width-17]}  {repo_label}")
+                display_pkg = f"{pkg}{dep_label}"
+                stdscr.addstr(y_pos, 5, f"] {display_pkg[:list_width-17]}  {repo_label}"[:list_width - 4])
                 
         if list_index < scroll_offset:
             scroll_offset = list_index
@@ -363,6 +442,12 @@ def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfile
     has_dotfiles = os.path.exists(os.path.join(respaldo_dir, "dotfiles_config.tar.gz"))
     has_dconf = os.path.exists(os.path.join(respaldo_dir, "dconf_settings.ini"))
     
+    # Load classified apps (or fallback)
+    classified_path = os.path.join(respaldo_dir, "classified_apps.txt")
+    app_set = set(load_pkgs(classified_path))
+    if not app_set:
+        app_set = detect_apps_fallback()
+    
     selected_pacman = set(load_pkgs(temp_pacman)) if os.path.exists(temp_pacman) and os.path.getsize(temp_pacman) > 0 else set(pacman_all)
     selected_aur = set(load_pkgs(temp_aur)) if os.path.exists(temp_aur) and os.path.getsize(temp_aur) > 0 else set(aur_all)
     selected_flatpak = set(load_pkgs(temp_flatpak)) if os.path.exists(temp_flatpak) and os.path.getsize(temp_flatpak) > 0 else set(flatpak_all)
@@ -464,27 +549,27 @@ def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfile
             if key == "pacman":
                 temp_set = set(selected_pacman)
                 title = "Seleccionar Paquetes APT" if is_debian else "Seleccionar Paquetes Pacman"
-                if run_select_screen(stdscr, pacman_all, temp_set, title):
+                if run_select_screen(stdscr, pacman_all, temp_set, title, app_set):
                     selected_pacman = temp_set
             elif key == "aur":
                 temp_set = set(selected_aur)
                 title = "Seleccionar Aplicaciones Snap" if is_debian else "Seleccionar Paquetes AUR"
-                if run_select_screen(stdscr, aur_all, temp_set, title):
+                if run_select_screen(stdscr, aur_all, temp_set, title, app_set):
                     selected_aur = temp_set
             elif key == "flatpak":
                 temp_set = set(selected_flatpak)
-                if run_select_screen(stdscr, flatpak_all, temp_set, "Seleccionar Aplicaciones Flatpak"):
+                if run_select_screen(stdscr, flatpak_all, temp_set, "Seleccionar Aplicaciones Flatpak", set(flatpak_all)):
                     selected_flatpak = temp_set
             elif key == "appimage":
                 temp_set = set(selected_appimages)
-                if run_select_screen(stdscr, appimages_all, temp_set, "Seleccionar Aplicaciones AppImage"):
+                if run_select_screen(stdscr, appimages_all, temp_set, "Seleccionar Aplicaciones AppImage", set(appimages_all)):
                     selected_appimages = temp_set
             elif key == "dotfiles":
                 restore_dotfiles = "NO" if restore_dotfiles == "SI" else "SI"
             elif key == "dconf":
                 restore_dconf = "NO" if restore_dconf == "SI" else "SI"
             elif key == "search":
-                run_global_search(stdscr, pacman_all, selected_pacman, aur_all, selected_aur, is_debian)
+                run_global_search(stdscr, pacman_all, selected_pacman, aur_all, selected_aur, is_debian, app_set)
             elif key == "install":
                 save_pkgs(temp_pacman, pacman_all, selected_pacman)
                 save_pkgs(temp_aur, aur_all, selected_aur)
