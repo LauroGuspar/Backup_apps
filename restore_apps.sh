@@ -1,36 +1,248 @@
 #!/bin/bash
 
-# Directorio de respaldos (por defecto respaldo_sistema, fallback a respaldo_cachyos)
+# Ubicación del script
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 
-if [ -d "$SCRIPT_DIR/respaldo_sistema" ]; then
-    RESPALDO_DIR="$SCRIPT_DIR/respaldo_sistema"
-elif [ -d "$SCRIPT_DIR/respaldo_cachyos" ]; then
-    RESPALDO_DIR="$SCRIPT_DIR/respaldo_cachyos"
-elif [ -d "$HOME/Backup/respaldo_sistema" ]; then
-    RESPALDO_DIR="$HOME/Backup/respaldo_sistema"
-elif [ -d "$HOME/Backup/respaldo_cachyos" ]; then
-    RESPALDO_DIR="$HOME/Backup/respaldo_cachyos"
-else
-    # Si no se encuentra en las ubicaciones estándar, preguntar al usuario
-    echo "No se encontró la carpeta de respaldo ('respaldo_sistema' o 'respaldo_cachyos') al lado de este script ni en ~/Backup."
-    read -p "Por favor, ingrese la ruta del directorio de respaldo (o la carpeta contenedora): " CUSTOM_PATH
-    CUSTOM_PATH="${CUSTOM_PATH/#\~/$HOME}"
-    if [[ "$CUSTOM_PATH" == */respaldo_sistema || "$CUSTOM_PATH" == */respaldo_cachyos ]]; then
-        RESPALDO_DIR="$CUSTOM_PATH"
-    elif [ -d "$CUSTOM_PATH/respaldo_sistema" ]; then
-        RESPALDO_DIR="$CUSTOM_PATH/respaldo_sistema"
-    elif [ -d "$CUSTOM_PATH/respaldo_cachyos" ]; then
-        RESPALDO_DIR="$CUSTOM_PATH/respaldo_cachyos"
-    else
-        RESPALDO_DIR="$CUSTOM_PATH"
+prompt_custom_path() {
+    local custom_input=""
+    while true; do
+        read -p "Por favor, ingrese la ruta del directorio de respaldo: " custom_input
+        custom_input="${custom_input/#\~/$HOME}"
+        if [ -z "$custom_input" ]; then
+            echo "Error: La ruta no puede estar vacía. Intente de nuevo."
+            continue
+        fi
+        if [ ! -d "$custom_input" ]; then
+            echo "Error: El directorio '$custom_input' no existe. Intente de nuevo."
+            continue
+        fi
+        # Verificar si la ruta ingresada contiene un respaldo o es un contenedor con respaldos conocidos
+        if [ -f "$custom_input/pacman_packages.txt" ] || [ -f "$custom_input/apt_packages.txt" ] || [ -f "$custom_input/backup_info.json" ]; then
+            RESPALDO_DIR="$(readlink -f "$custom_input")"
+            break
+        elif [ -d "$custom_input/respaldo_latest" ]; then
+            local resolved
+            resolved="$(readlink -f "$custom_input/respaldo_latest" 2>/dev/null)"
+            if [ -d "$resolved" ]; then
+                RESPALDO_DIR="$resolved"
+                break
+            fi
+        elif [ -d "$custom_input/respaldo_sistema" ]; then
+            RESPALDO_DIR="$(readlink -f "$custom_input/respaldo_sistema")"
+            break
+        elif [ -d "$custom_input/respaldo_cachyos" ]; then
+            RESPALDO_DIR="$(readlink -f "$custom_input/respaldo_cachyos")"
+            break
+        else
+            RESPALDO_DIR="$(readlink -f "$custom_input")"
+            break
+        fi
+    done
+}
+
+# Escaneo y detección de respaldos disponibles
+declare -A SEEN_PATHS
+CANDIDATE_DIRS=()
+
+add_candidate() {
+    local target="$1"
+    [ -d "$target" ] || return 0
+    local canon
+    canon="$(readlink -f "$target" 2>/dev/null)" || return 0
+    [ -d "$canon" ] || return 0
+    if [ -f "$canon/pacman_packages.txt" ] || [ -f "$canon/apt_packages.txt" ] || [ -f "$canon/backup_info.json" ]; then
+        if [ -z "${SEEN_PATHS["$canon"]}" ]; then
+            SEEN_PATHS["$canon"]=1
+            CANDIDATE_DIRS+=("$canon")
+        fi
     fi
+}
+
+# 1. Verificar si SCRIPT_DIR es en sí mismo una carpeta de respaldo
+add_candidate "$SCRIPT_DIR"
+
+# 2. Buscar subdirectorios en SCRIPT_DIR
+shopt -s nullglob
+for d in "$SCRIPT_DIR"/*; do
+    [ -d "$d" ] && add_candidate "$d"
+done
+
+# 3. Buscar subdirectorios en el directorio padre de SCRIPT_DIR
+for d in "$SCRIPT_DIR/.."/*; do
+    [ -d "$d" ] && add_candidate "$d"
+done
+
+# 4. Buscar en ~/Backup y sus subdirectorios
+if [ -d "$HOME/Backup" ]; then
+    add_candidate "$HOME/Backup"
+    for d in "$HOME/Backup"/*; do
+        [ -d "$d" ] && add_candidate "$d"
+    done
+fi
+shopt -u nullglob
+
+# Ordenar candidatos y extraer resúmenes informativos
+SORTED_CANDIDATES=()
+CANDIDATE_SUMMARIES=()
+
+if [ ${#CANDIDATE_DIRS[@]} -gt 0 ]; then
+    if command -v python3 &>/dev/null; then
+        while IFS=$'\t' read -r c_path c_summary; do
+            [ -n "$c_path" ] || continue
+            SORTED_CANDIDATES+=("$c_path")
+            CANDIDATE_SUMMARIES+=("$c_summary")
+        done < <(python3 -c '
+import os, sys, json
+from datetime import datetime
+
+candidates = sys.argv[1:]
+items = []
+
+def get_candidate_data(d):
+    info_path = os.path.join(d, "backup_info.json")
+    if os.path.isfile(info_path):
+        try:
+            with open(info_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            name = data.get("name") or os.path.basename(d)
+            ts = data.get("timestamp", 0)
+            created_at = data.get("created_at", "")
+            date_str = created_at[:16] if len(created_at) >= 16 else created_at
+            if not date_str:
+                date_str = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M") if ts else "Desconocida"
+            if not ts:
+                ts = int(os.path.getmtime(info_path))
+
+            os_fam = data.get("os_family", "")
+            counts = data.get("counts", {})
+            parts = []
+            if os_fam == "arch" or counts.get("pacman", 0) > 0 or counts.get("aur", 0) > 0:
+                parts.append("Pacman: %d" % counts.get("pacman", 0))
+                parts.append("AUR: %d" % counts.get("aur", 0))
+            if os_fam == "debian" or counts.get("apt", 0) > 0 or counts.get("snap", 0) > 0:
+                parts.append("APT: %d" % counts.get("apt", 0))
+                parts.append("Snap: %d" % counts.get("snap", 0))
+            if counts.get("flatpak", 0) > 0:
+                parts.append("Flatpak: %d" % counts.get("flatpak", 0))
+            has_df = "Sí" if data.get("has_dotfiles") else "No"
+            parts.append("Dotfiles: %s" % has_df)
+            has_app = "Sí" if data.get("has_appimages") else "No"
+            parts.append("AppImages: %s" % has_app)
+            summary = "[%s] %s (%s)" % (date_str, name, ", ".join(parts))
+            return ts, summary
+        except Exception:
+            pass
+
+    # Fallback: inspección directa de archivos en el directorio
+    name = os.path.basename(d)
+    mtime = os.path.getmtime(d)
+    for fn in ["pacman_packages.txt", "apt_packages.txt", "backup_info.json"]:
+        p = os.path.join(d, fn)
+        if os.path.exists(p):
+            mtime = os.path.getmtime(p)
+            break
+    date_str = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
+
+    parts = []
+    p_pacman = os.path.join(d, "pacman_packages.txt")
+    p_aur = os.path.join(d, "aur_packages.txt")
+    p_apt = os.path.join(d, "apt_packages.txt")
+    p_snap = os.path.join(d, "snap_packages.txt")
+    p_flatpak = os.path.join(d, "flatpak_packages.txt")
+    p_dotfiles = os.path.join(d, "dotfiles_config.tar.gz")
+    p_appimages = os.path.join(d, "appimages_list.txt")
+
+    def count_lines(filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                return sum(1 for line in f if line.strip())
+        except Exception:
+            return 0
+
+    if os.path.exists(p_pacman) or os.path.exists(p_aur):
+        parts.append("Pacman: %d" % count_lines(p_pacman))
+        parts.append("AUR: %d" % count_lines(p_aur))
+    if os.path.exists(p_apt) or os.path.exists(p_snap):
+        parts.append("APT: %d" % count_lines(p_apt))
+        parts.append("Snap: %d" % count_lines(p_snap))
+    if os.path.exists(p_flatpak):
+        parts.append("Flatpak: %d" % count_lines(p_flatpak))
+
+    has_df = "Sí" if os.path.exists(p_dotfiles) else "No"
+    parts.append("Dotfiles: %s" % has_df)
+    has_app = "Sí" if (os.path.exists(p_appimages) or os.path.isdir(os.path.join(d, "appimages"))) else "No"
+    parts.append("AppImages: %s" % has_app)
+
+    summary = "[%s] %s (%s)" % (date_str, name, ", ".join(parts))
+    return int(mtime), summary
+
+for d in candidates:
+    if os.path.isdir(d):
+        ts, summary = get_candidate_data(d)
+        items.append((ts, d, summary))
+
+items.sort(key=lambda x: x[0], reverse=True)
+for ts, d, summary in items:
+    print("%s\t%s" % (d, summary))
+' "${CANDIDATE_DIRS[@]}")
+    else
+        for cdir in "${CANDIDATE_DIRS[@]}"; do
+            SORTED_CANDIDATES+=("$cdir")
+            CANDIDATE_SUMMARIES+=("$(basename "$cdir")")
+        done
+    fi
+fi
+
+# Selección interactiva del respaldo
+NUM_BACKUPS=${#SORTED_CANDIDATES[@]}
+
+if [ "$NUM_BACKUPS" -gt 1 ]; then
+    CUSTOM_OPTION=$((NUM_BACKUPS + 1))
+    while true; do
+        echo "=== Historial de Respaldos Disponibles ==="
+        echo "Se encontraron varios respaldos. Seleccione cuál desea restaurar:"
+        for i in "${!SORTED_CANDIDATES[@]}"; do
+            idx=$((i + 1))
+            echo "$idx) ${CANDIDATE_SUMMARIES[$i]}"
+        done
+        echo "$CUSTOM_OPTION) Ingresar ruta personalizada..."
+        read -p "Opción [1-$CUSTOM_OPTION] (Por defecto: 1): " OPTION
+        OPTION="${OPTION:-1}"
+
+        if [[ "$OPTION" =~ ^[0-9]+$ ]] && [ "$OPTION" -ge 1 ] && [ "$OPTION" -le "$NUM_BACKUPS" ]; then
+            SELECTED_INDEX=$((OPTION - 1))
+            RESPALDO_DIR="${SORTED_CANDIDATES[$SELECTED_INDEX]}"
+            break
+        elif [ "$OPTION" -eq "$CUSTOM_OPTION" ] 2>/dev/null; then
+            prompt_custom_path
+            break
+        else
+            echo "Opción no válida. Intente de nuevo."
+            echo ""
+        fi
+    done
+elif [ "$NUM_BACKUPS" -eq 1 ]; then
+    echo "=== Respaldo Detectado ==="
+    echo "Se encontró un respaldo: ${CANDIDATE_SUMMARIES[0]}"
+    read -p "¿Desea utilizar este respaldo? [S/n] (Por defecto: Sí): " CONFIRM
+    CONFIRM="${CONFIRM:-S}"
+    if [[ "$CONFIRM" =~ ^[sSyY]$ ]]; then
+        RESPALDO_DIR="${SORTED_CANDIDATES[0]}"
+    else
+        prompt_custom_path
+    fi
+else
+    echo "No se encontraron respaldos en las ubicaciones estándar."
+    prompt_custom_path
 fi
 
 if [ ! -d "$RESPALDO_DIR" ]; then
     echo "Error: No se encontró la carpeta de respaldo '$RESPALDO_DIR'."
     exit 1
 fi
+
+echo ""
+echo "Directorio de respaldo seleccionado: $RESPALDO_DIR"
 
 # Detectar gestor de paquetes de la familia del sistema operativo
 if command -v pacman &> /dev/null; then
@@ -67,7 +279,12 @@ fi
 [ -f "$RESPALDO_DIR/appimages_list.txt" ] && cp "$RESPALDO_DIR/appimages_list.txt" "$TEMP_APPIMAGE"
 
 # Ejecutar el Asistente de Selección TUI en Python Curses
-python3 "$(dirname "$(readlink -f "$0")")/restore_tui.py" \
+TUI_SCRIPT="$(dirname "$(readlink -f "$0")")/restore_tui.py"
+if [ ! -f "$TUI_SCRIPT" ] && [ -f "$RESPALDO_DIR/restore_tui.py" ]; then
+    TUI_SCRIPT="$RESPALDO_DIR/restore_tui.py"
+fi
+
+python3 "$TUI_SCRIPT" \
         "$RESPALDO_DIR" \
         "$TEMP_PACMAN" \
         "$TEMP_AUR" \

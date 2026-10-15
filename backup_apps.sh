@@ -38,6 +38,17 @@ while true; do
     esac
 done
 
+# Configuración del Nombre del Respaldo
+DEFAULT_BACKUP_NAME="respaldo_$(date +%Y-%m-%d_%H%M%S)"
+echo ""
+echo "=== Configuración del Nombre del Respaldo ==="
+read -p "Ingrese un nombre o etiqueta para este respaldo [Por defecto: $DEFAULT_BACKUP_NAME]: " USER_BACKUP_NAME
+BACKUP_NAME="${USER_BACKUP_NAME:-$DEFAULT_BACKUP_NAME}"
+BACKUP_NAME=$(echo "$BACKUP_NAME" | sed 's/[^a-zA-Z0-9._-]/_/g')
+[ -z "$BACKUP_NAME" ] && BACKUP_NAME="$DEFAULT_BACKUP_NAME"
+
+RESPALDO_DIR="$BASE_DIR/$BACKUP_NAME"
+
 # Preguntar si se desea respaldar la carpeta de configuraciones ~/.config
 echo ""
 echo "=== Configuración de Componentes Opcionales ==="
@@ -76,9 +87,6 @@ if [ "$APPIMAGE_COUNT" -gt 0 ]; then
     fi
 fi
 
-RESPALDO_DIR="$BASE_DIR/respaldo_sistema"
-
-
 # Crear la carpeta de respaldo
 if ! mkdir -p "$RESPALDO_DIR" 2>/dev/null; then
     echo "Error: No se pudo crear o acceder al directorio: $RESPALDO_DIR"
@@ -86,7 +94,10 @@ if ! mkdir -p "$RESPALDO_DIR" 2>/dev/null; then
     exit 1
 fi
 
-# Copiar los scripts de restauración y TUI al directorio base del respaldo para asegurar portabilidad
+# Actualizar symlink relativo respaldo_latest en BASE_DIR
+(cd "$BASE_DIR" && ln -sfn "$BACKUP_NAME" respaldo_latest 2>/dev/null || true)
+
+# Copiar los scripts de restauración y TUI al directorio base y al directorio de respaldo
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 if [ "$BASE_DIR" != "$SCRIPT_DIR" ]; then
     if [ -f "$SCRIPT_DIR/restore_apps.sh" ]; then
@@ -96,6 +107,14 @@ if [ "$BASE_DIR" != "$SCRIPT_DIR" ]; then
     if [ -f "$SCRIPT_DIR/restore_tui.py" ]; then
         echo "Copiando ayudante de TUI 'restore_tui.py' a $BASE_DIR..."
         cp "$SCRIPT_DIR/restore_tui.py" "$BASE_DIR/"
+    fi
+fi
+if [ "$RESPALDO_DIR" != "$SCRIPT_DIR" ]; then
+    if [ -f "$SCRIPT_DIR/restore_apps.sh" ]; then
+        cp "$SCRIPT_DIR/restore_apps.sh" "$RESPALDO_DIR/"
+    fi
+    if [ -f "$SCRIPT_DIR/restore_tui.py" ]; then
+        cp "$SCRIPT_DIR/restore_tui.py" "$RESPALDO_DIR/"
     fi
 fi
 
@@ -212,9 +231,93 @@ else
     echo "[5/5] Omitiendo respaldo de ~/.config por elección del usuario."
 fi
 
+# Generar archivo de metadatos backup_info.json
+CNT_PACMAN=0
+[ -f "$RESPALDO_DIR/pacman_packages.txt" ] && CNT_PACMAN=$(wc -l < "$RESPALDO_DIR/pacman_packages.txt" 2>/dev/null | tr -d ' ' || echo 0)
+
+CNT_AUR=0
+[ -f "$RESPALDO_DIR/aur_packages.txt" ] && CNT_AUR=$(wc -l < "$RESPALDO_DIR/aur_packages.txt" 2>/dev/null | tr -d ' ' || echo 0)
+
+CNT_APT=0
+[ -f "$RESPALDO_DIR/apt_packages.txt" ] && CNT_APT=$(wc -l < "$RESPALDO_DIR/apt_packages.txt" 2>/dev/null | tr -d ' ' || echo 0)
+
+CNT_SNAP=0
+[ -f "$RESPALDO_DIR/snap_packages.txt" ] && CNT_SNAP=$(wc -l < "$RESPALDO_DIR/snap_packages.txt" 2>/dev/null | tr -d ' ' || echo 0)
+
+CNT_FLATPAK=0
+[ -f "$RESPALDO_DIR/flatpak_packages.txt" ] && CNT_FLATPAK=$(wc -l < "$RESPALDO_DIR/flatpak_packages.txt" 2>/dev/null | tr -d ' ' || echo 0)
+
+CNT_APPIMAGE=0
+[ -f "$RESPALDO_DIR/appimages_list.txt" ] && CNT_APPIMAGE=$(wc -l < "$RESPALDO_DIR/appimages_list.txt" 2>/dev/null | tr -d ' ' || echo 0)
+
+HAS_DOTFILES=false
+[ -f "$RESPALDO_DIR/dotfiles_config.tar.gz" ] && HAS_DOTFILES=true
+
+HAS_APPIMAGES=false
+[ "$CNT_APPIMAGE" -gt 0 ] && HAS_APPIMAGES=true
+
+CREATED_AT="$(date +"%Y-%m-%d %H:%M:%S")"
+TIMESTAMP="$(date +%s)"
+HOST_NAME="$(hostname 2>/dev/null || echo "unknown")"
+
+if command -v python3 &>/dev/null; then
+    python3 -c '
+import sys, json
+
+data = {
+    "name": sys.argv[1],
+    "created_at": sys.argv[2],
+    "timestamp": int(sys.argv[3]),
+    "os_family": sys.argv[4],
+    "hostname": sys.argv[5],
+    "has_dotfiles": sys.argv[6] == "true",
+    "has_appimages": sys.argv[7] == "true",
+    "counts": {
+        "pacman": int(sys.argv[8]),
+        "aur": int(sys.argv[9]),
+        "apt": int(sys.argv[10]),
+        "snap": int(sys.argv[11]),
+        "flatpak": int(sys.argv[12]),
+        "appimage": int(sys.argv[13])
+    }
+}
+with open(sys.argv[14], "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+' "$BACKUP_NAME" "$CREATED_AT" "$TIMESTAMP" "$OS_FAMILY" "$HOST_NAME" \
+  "$HAS_DOTFILES" "$HAS_APPIMAGES" "$CNT_PACMAN" "$CNT_AUR" "$CNT_APT" \
+  "$CNT_SNAP" "$CNT_FLATPAK" "$CNT_APPIMAGE" "$RESPALDO_DIR/backup_info.json"
+else
+    cat <<EOF > "$RESPALDO_DIR/backup_info.json"
+{
+  "name": "$BACKUP_NAME",
+  "created_at": "$CREATED_AT",
+  "timestamp": $TIMESTAMP,
+  "os_family": "$OS_FAMILY",
+  "hostname": "$HOST_NAME",
+  "has_dotfiles": $HAS_DOTFILES,
+  "has_appimages": $HAS_APPIMAGES,
+  "counts": {
+    "pacman": $CNT_PACMAN,
+    "aur": $CNT_AUR,
+    "apt": $CNT_APT,
+    "snap": $CNT_SNAP,
+    "flatpak": $CNT_FLATPAK,
+    "appimage": $CNT_APPIMAGE
+  }
+}
+EOF
+fi
+
+# Asegurar symlink relativo respaldo_latest en BASE_DIR
+(cd "$BASE_DIR" && ln -sfn "$BACKUP_NAME" respaldo_latest 2>/dev/null || true)
+
 echo "=========================================================="
 echo "¡Respaldo completado con éxito!"
 echo "Los archivos se guardaron en: $RESPALDO_DIR"
+if [ -L "$BASE_DIR/respaldo_latest" ]; then
+    echo "Enlace al último respaldo:    $BASE_DIR/respaldo_latest"
+fi
 echo "----------------------------------------------------------"
 echo "Resumen de lo respaldado (Familia: $OS_FAMILY):"
 if [ -f "$RESPALDO_DIR/pacman_packages.txt" ]; then
@@ -248,4 +351,5 @@ if [ -f "$RESPALDO_DIR/dotfiles_config.tar.gz" ]; then
 else
     echo "  - Configuraciones (~/.config):  Omitido"
 fi
+echo "  - Metadatos del respaldo:      backup_info.json"
 echo "=========================================================="
