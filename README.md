@@ -36,9 +36,11 @@ El asistente de restauración cuenta con una interfaz visual unificada en termin
 ## 📂 Estructura del Proyecto
 
 ```text
-├── backup_apps.sh      # Script Bash interactivo para realizar el respaldo.
-├── restore_apps.sh     # Script Bash de ejecución que inicia el proceso de restauración.
-├── restore_tui.py      # Interfaz de usuario interactiva (Python Curses TUI) para restaurar.
+├── backup_apps.sh      # Script Bash interactivo para realizar el respaldo o lanzar el creador.
+├── create_installer.sh # Creador de instaladores personalizados "Todo en 1" para compartir.
+├── install_apps.sh     # Lanzador amigable de instalación para el destinatario.
+├── restore_apps.sh     # Script Bash de ejecución que realiza el proceso de restauración.
+├── restore_tui.py      # Interfaz de usuario interactiva (Python Curses TUI).
 ├── README.md           # Guía de uso y descripción general unificada (este archivo).
 ├── .gitignore          # Archivo de exclusiones para Git (evita subir dotfiles privados).
 └── LICENSE             # Licencia de MIT.
@@ -95,6 +97,30 @@ El asistente de restauración cuenta con una interfaz visual unificada en termin
    * Se abrirá la interfaz gráfica en terminal. Por defecto, solo las **Aplicaciones principales** están seleccionadas.
    * Pulsa `[TAB]` para ver dependencias o ver la lista completa.
    * Pulsa `ENTER` para confirmar o `ESC` para descartar cambios.
+
+### Paso 3: Armar un Instalador Personalizado para Compartir (`create_installer.sh`)
+
+Si deseas compartir una selección específica de software con otra persona o crear un instalador limpio y modular sin tus datos personales:
+
+1. Ejecuta el creador directamente o desde la opción 2 de `backup_apps.sh`:
+   ```bash
+   ./create_installer.sh
+   ```
+2. **Elige el origen**:
+   * **Opción 1**: Capturar aplicaciones desde tu sistema actual en vivo.
+   * **Opción 2**: Extraerlas a partir de un respaldo previo de tu historial.
+3. **Personaliza los metadatos**:
+   * Asigna un nombre al paquete (ej. `dev_tools_pack`), un título para el destinatario, autor y descripción breve.
+4. **Selecciona visualmente**:
+   * La TUI se abrirá en modo empaquetado para que marques exactamente qué aplicaciones, Flatpaks o AppImages incluir.
+   * Por seguridad y privacidad, las configuraciones personales de `~/.config` están excluidas para no filtrar credenciales ni sesiones.
+5. **Comprime y Comparte**:
+   * El script creará la carpeta autónoma y te ofrecerá comprimirla en `.tar.gz`.
+   * El destinatario solo debe descomprimir el archivo y ejecutar:
+     ```bash
+     cd mi_paquete && ./install_apps.sh
+     ```
+   * Verá la pantalla de bienvenida con tu título y descripción, y podrá instalar todo automáticamente.
 
 ---
 
