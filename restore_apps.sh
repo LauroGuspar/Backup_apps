@@ -50,7 +50,7 @@ add_candidate() {
     local canon
     canon="$(readlink -f "$target" 2>/dev/null)" || return 0
     [ -d "$canon" ] || return 0
-    if [ -f "$canon/pacman_packages.txt" ] || [ -f "$canon/apt_packages.txt" ] || [ -f "$canon/backup_info.json" ]; then
+    if [ -f "$canon/pacman_packages.txt" ] || [ -f "$canon/apt_packages.txt" ] || [ -f "$canon/backup_info.json" ] || [ -f "$canon/installer_info.json" ]; then
         if [ -z "${SEEN_PATHS["$canon"]}" ]; then
             SEEN_PATHS["$canon"]=1
             CANDIDATE_DIRS+=("$canon")
@@ -99,12 +99,15 @@ candidates = sys.argv[1:]
 items = []
 
 def get_candidate_data(d):
-    info_path = os.path.join(d, "backup_info.json")
+    info_path = os.path.join(d, "installer_info.json") if os.path.isfile(os.path.join(d, "installer_info.json")) else os.path.join(d, "backup_info.json")
     if os.path.isfile(info_path):
         try:
             with open(info_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            name = data.get("name") or os.path.basename(d)
+            is_installer = (os.path.basename(info_path) == "installer_info.json")
+            name = data.get("title") or data.get("name") or os.path.basename(d)
+            if is_installer:
+                name = "[Instalador] %s" % name
             ts = data.get("timestamp", 0)
             created_at = data.get("created_at", "")
             date_str = created_at[:16] if len(created_at) >= 16 else created_at
@@ -124,14 +127,16 @@ def get_candidate_data(d):
                 parts.append("Snap: %d" % counts.get("snap", 0))
             if counts.get("flatpak", 0) > 0:
                 parts.append("Flatpak: %d" % counts.get("flatpak", 0))
+            if counts.get("appimage", 0) > 0 or data.get("has_appimages"):
+                app_count = counts.get("appimage")
+                parts.append("AppImages: %s" % (str(app_count) if app_count is not None else "Sí"))
             has_df = "Sí" if data.get("has_dotfiles") else "No"
             parts.append("Dotfiles: %s" % has_df)
-            has_app = "Sí" if data.get("has_appimages") else "No"
-            parts.append("AppImages: %s" % has_app)
             summary = "[%s] %s (%s)" % (date_str, name, ", ".join(parts))
             return ts, summary
         except Exception:
             pass
+
 
     # Fallback: inspección directa de archivos en el directorio
     name = os.path.basename(d)
@@ -243,6 +248,20 @@ fi
 
 echo ""
 echo "Directorio de respaldo seleccionado: $RESPALDO_DIR"
+
+if [ -f "$RESPALDO_DIR/installer_info.json" ]; then
+    INSTALLER_TITLE=$(python3 -c "import json; d=json.load(open('$RESPALDO_DIR/installer_info.json')); print(d.get('title') or d.get('name') or '')" 2>/dev/null)
+    INSTALLER_DESC=$(python3 -c "import json; d=json.load(open('$RESPALDO_DIR/installer_info.json')); print(d.get('description') or '')" 2>/dev/null)
+    INSTALLER_AUTHOR=$(python3 -c "import json; d=json.load(open('$RESPALDO_DIR/installer_info.json')); print(d.get('author') or '')" 2>/dev/null)
+    
+    echo "=========================================================="
+    echo "          PAQUETE INSTALADOR PERSONALIZADO                "
+    echo "=========================================================="
+    [ -n "$INSTALLER_TITLE" ]  && echo "  Paquete : $INSTALLER_TITLE"
+    [ -n "$INSTALLER_AUTHOR" ] && echo "  Creador : $INSTALLER_AUTHOR"
+    [ -n "$INSTALLER_DESC" ]   && echo "  Detalle : $INSTALLER_DESC"
+    echo "=========================================================="
+fi
 
 # Detectar gestor de paquetes de la familia del sistema operativo
 if command -v pacman &> /dev/null; then
