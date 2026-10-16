@@ -21,7 +21,7 @@ Implement a feature to create a clean, standalone, portable application installe
 
 ## Task Checklist
 - [x] **TASK-1**: Crear lanzador `install_apps.sh` y soporte para metadatos/banner de instalador (`installer_info.json`) en `restore_apps.sh` - Commit `0ad2d66` (RDD: unavailable / runtime antigravity).
-- [ ] **TASK-2**: Adaptar `restore_tui.py` para admitir títulos personalizados y modo de empaquetado/selección limpia.
+- [x] **TASK-2**: Adaptar `restore_tui.py` para admitir títulos personalizados y modo de empaquetado/selección limpia - Commit `d17d07a` (RDD: unavailable / runtime antigravity).
 
 - [ ] **TASK-3**: Implementar script principal `create_installer.sh` (origen desde sistema en vivo o backup previo, empaquetado limpio y compresión `.tar.gz`).
 - [ ] **TASK-4**: Integrar opción de acceso a `create_installer.sh` dentro de `backup_apps.sh`.
