@@ -26,4 +26,4 @@ Implement a feature to create a clean, standalone, portable application installe
 - [x] **TASK-3**: Implementar script principal `create_installer.sh` (origen desde sistema en vivo o backup previo, empaquetado limpio y compresión `.tar.gz`) - Commit `64e2255` (RDD: unavailable / runtime antigravity).
 - [x] **TASK-4**: Integrar opción de acceso a `create_installer.sh` dentro de `backup_apps.sh` - Commit `c8a42d7` (RDD: unavailable / runtime antigravity).
 
-- [x] **TASK-5**: Actualizar `README.md` con la guía de creación y distribución de instaladores personalizados, y realizar pruebas de integración de punta a punta.
+- [x] **TASK-5**: Actualizar `README.md` con la guía de creación y distribución de instaladores personalizados, y realizar pruebas de integración de punta a punta - Commit `9383011` (RDD: unavailable / runtime antigravity).
