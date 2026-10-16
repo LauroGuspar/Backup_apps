@@ -441,6 +441,9 @@ def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfile
     appimages_all = load_pkgs(os.path.join(respaldo_dir, "appimages_list.txt"))
     has_dotfiles = os.path.exists(os.path.join(respaldo_dir, "dotfiles_config.tar.gz"))
     has_dconf = os.path.exists(os.path.join(respaldo_dir, "dconf_settings.ini"))
+    if os.environ.get("TUI_HIDE_DOTFILES") == "1":
+        has_dotfiles = False
+        has_dconf = False
     
     # Load classified apps (or fallback)
     classified_path = os.path.join(respaldo_dir, "classified_apps.txt")
@@ -489,8 +492,10 @@ def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfile
             menu_items.append(("dconf", f"Restaurar Conf. Escritorio   ({restore_dconf})"))
             
         menu_items.append(("search", "Buscar en todos los paquetes (APT/Snaps)" if is_debian else "Buscar en todos los paquetes (Pacman/AUR)"))
-        menu_items.append(("install", "INICIAR INSTALACION Y RESTAURACION"))
-        menu_items.append(("exit", "Salir sin instalar"))
+        action_label = os.environ.get("TUI_ACTION_LABEL", "INICIAR INSTALACION Y RESTAURACION")
+        exit_label = os.environ.get("TUI_EXIT_LABEL", "Salir sin instalar" if "INSTALACION" in action_label else "Cancelar y salir")
+        menu_items.append(("install", action_label))
+        menu_items.append(("exit", exit_label))
         
         if menu_index >= len(menu_items):
             menu_index = len(menu_items) - 1
@@ -510,9 +515,11 @@ def main_menu(stdscr, respaldo_dir, temp_pacman, temp_aur, temp_flatpak, dotfile
         stdscr.attroff(curses.color_pair(2) | curses.A_BOLD)
         
         # Title (no emojis/stickers)
-        stdscr.addstr(1, 2, " ASISTENTE DE RESTAURACION ", curses.color_pair(2) | curses.A_BOLD | curses.A_REVERSE)
+        tui_title = os.environ.get("TUI_TITLE", "ASISTENTE DE RESTAURACION")
+        stdscr.addstr(1, 2, f" {tui_title} ", curses.color_pair(2) | curses.A_BOLD | curses.A_REVERSE)
         
-        stdscr.addstr(3, 2, "Configura que programas y configuraciones quieres restaurar:", curses.A_BOLD)
+        tui_subtitle = os.environ.get("TUI_SUBTITLE", "Configura que programas y configuraciones quieres restaurar:")
+        stdscr.addstr(3, 2, tui_subtitle, curses.A_BOLD)
         
         # Draw menu items
         for i, (key, label) in enumerate(menu_items):
