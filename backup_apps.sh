@@ -1,7 +1,28 @@
 #!/bin/bash
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+
+echo "=========================================================="
+echo "         ASISTENTE DE RESPALDO DE APLICACIONES            "
+echo "=========================================================="
+echo "Seleccione la operación que desea realizar:"
+echo "1) Respaldo del sistema completo (Por defecto)"
+echo "2) Armar instalador personalizado para compartir (create_installer.sh)"
+read -p "Opción [1-2] (Por defecto: 1): " OP_MODE
+OP_MODE="${OP_MODE:-1}"
+
+if [ "$OP_MODE" = "2" ]; then
+    if [ -f "$SCRIPT_DIR/create_installer.sh" ]; then
+        exec bash "$SCRIPT_DIR/create_installer.sh" "$@"
+    else
+        echo "Error: No se encontró '$SCRIPT_DIR/create_installer.sh'."
+        exit 1
+    fi
+fi
 
 # Determinar la carpeta base para el respaldo
+echo ""
 echo "=== Configuración del Destino del Respaldo ==="
+
 while true; do
     echo "Seleccione dónde desea guardar el respaldo:"
     echo "1) Carpeta predeterminada (~/Backup)"
@@ -100,6 +121,10 @@ fi
 # Copiar los scripts de restauración y TUI al directorio base y al directorio de respaldo
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 if [ "$BASE_DIR" != "$SCRIPT_DIR" ]; then
+    if [ -f "$SCRIPT_DIR/install_apps.sh" ]; then
+        cp "$SCRIPT_DIR/install_apps.sh" "$BASE_DIR/"
+        chmod +x "$BASE_DIR/install_apps.sh" 2>/dev/null || true
+    fi
     if [ -f "$SCRIPT_DIR/restore_apps.sh" ]; then
         echo "Copiando script de restauración 'restore_apps.sh' a $BASE_DIR..."
         cp "$SCRIPT_DIR/restore_apps.sh" "$BASE_DIR/"
@@ -110,6 +135,10 @@ if [ "$BASE_DIR" != "$SCRIPT_DIR" ]; then
     fi
 fi
 if [ "$RESPALDO_DIR" != "$SCRIPT_DIR" ]; then
+    if [ -f "$SCRIPT_DIR/install_apps.sh" ]; then
+        cp "$SCRIPT_DIR/install_apps.sh" "$RESPALDO_DIR/"
+        chmod +x "$RESPALDO_DIR/install_apps.sh" 2>/dev/null || true
+    fi
     if [ -f "$SCRIPT_DIR/restore_apps.sh" ]; then
         cp "$SCRIPT_DIR/restore_apps.sh" "$RESPALDO_DIR/"
     fi
